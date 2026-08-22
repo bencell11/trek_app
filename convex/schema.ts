@@ -72,6 +72,10 @@ export default defineSchema({
     categorie: v.optional(v.string()),
     quantiteRequise: v.number(),
     notes: v.optional(v.string()),
+    // Renseigné pour un abri (tente...) : le besoin se calcule alors depuis
+    // le nombre de participants (de l'étape si liée, sinon du trek) divisé
+    // par cette capacité, plutôt que depuis quantiteRequise.
+    capacitePersonnes: v.optional(v.number()),
   })
     .index("by_trek", ["trekId"])
     .index("by_etape", ["etapeId"]),

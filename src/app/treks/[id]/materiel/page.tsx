@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { calculerCouverture } from "@/lib/materiel";
 
 export default function MaterielPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,7 @@ export default function MaterielPage() {
   const items = useQuery(api.materiel.listByTrek, { trekId });
   const participants = useQuery(api.participants.listByTrek, { trekId });
   const etapes = useQuery(api.etapes.listWithHebergement, { trekId });
+  const presences = useQuery(api.presence.listByTrek, { trekId });
 
   const createItem = useMutation(api.materiel.create);
   const deleteItem = useMutation(api.materiel.remove);
@@ -25,6 +27,8 @@ export default function MaterielPage() {
     quantiteRequise: "1",
     etapeId: "",
     notes: "",
+    estAbri: false,
+    capacitePersonnes: "2",
   });
 
   async function handleCreate(e: React.FormEvent) {
@@ -35,20 +39,41 @@ export default function MaterielPage() {
       etapeId: form.etapeId ? (form.etapeId as Id<"etapes">) : undefined,
       nom: form.nom.trim(),
       categorie: form.categorie.trim() || undefined,
-      quantiteRequise: Number(form.quantiteRequise) || 1,
+      quantiteRequise: form.estAbri ? 1 : Number(form.quantiteRequise) || 1,
+      capacitePersonnes: form.estAbri ? Number(form.capacitePersonnes) || 1 : undefined,
       notes: form.notes.trim() || undefined,
     });
-    setForm({ nom: "", categorie: "", quantiteRequise: "1", etapeId: "", notes: "" });
+    setForm({
+      nom: "",
+      categorie: "",
+      quantiteRequise: "1",
+      etapeId: "",
+      notes: "",
+      estAbri: false,
+      capacitePersonnes: "2",
+    });
   }
+
+  const presenceCountByEtape = new Map<string, number>();
+  for (const p of presences ?? []) {
+    presenceCountByEtape.set(p.etapeId, (presenceCountByEtape.get(p.etapeId) ?? 0) + 1);
+  }
+  const totalParticipants = participants?.length ?? 0;
 
   return (
     <div className="h-full overflow-y-auto px-4 py-8">
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="space-y-4">
         {(items ?? []).map((item) => {
-          const totalApporte = item.apports.reduce((s, a) => s + a.quantite, 0);
-          const diff = totalApporte - item.quantiteRequise;
-          const statut = diff < 0 ? "manquant" : diff > 0 ? "double" : "couvert";
+          const participantsConcernes = item.etapeId
+            ? (presenceCountByEtape.get(item.etapeId) ?? 0)
+            : totalParticipants;
+          const { requis, couvert, manque, unite } = calculerCouverture(
+            item,
+            participantsConcernes
+          );
+          const enTrop = unite === "" && couvert > requis;
+          const statut = manque > 0 ? "manquant" : enTrop ? "double" : "couvert";
           const badgeClass =
             statut === "manquant"
               ? "bg-red-50 text-red-700 border-red-200"
@@ -70,6 +95,11 @@ export default function MaterielPage() {
                         {item.categorie}
                       </span>
                     )}
+                    {item.capacitePersonnes && (
+                      <span className="ml-2 text-xs font-normal text-slate-400">
+                        {item.capacitePersonnes} pers./unité
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-slate-400">
                     {item.etape
@@ -81,7 +111,7 @@ export default function MaterielPage() {
                   <span
                     className={`rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClass}`}
                   >
-                    {totalApporte}/{item.quantiteRequise} ·{" "}
+                    {couvert}/{requis} {unite} ·{" "}
                     {statut === "manquant"
                       ? "manquant"
                       : statut === "double"
@@ -106,6 +136,9 @@ export default function MaterielPage() {
                   >
                     <span>
                       {a.participantNom} apporte {a.quantite}
+                      {item.capacitePersonnes
+                        ? ` (${a.quantite * item.capacitePersonnes} places)`
+                        : ""}
                     </span>
                     <button
                       type="button"
@@ -156,22 +189,44 @@ export default function MaterielPage() {
             value={form.categorie}
             onChange={(e) => setForm({ ...form, categorie: e.target.value })}
             placeholder="Catégorie (abri, cuisine, sécurité...)"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
-          <input
-            type="number"
-            min={1}
-            value={form.quantiteRequise}
-            onChange={(e) =>
-              setForm({ ...form, quantiteRequise: e.target.value })
-            }
-            placeholder="Quantité requise"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
+
+          <label className="col-span-2 flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={form.estAbri}
+              onChange={(e) => setForm({ ...form, estAbri: e.target.checked })}
+            />
+            C&apos;est un abri (tente...) — le besoin se calcule depuis le
+            nombre de participants
+          </label>
+
+          {form.estAbri ? (
+            <input
+              type="number"
+              min={1}
+              value={form.capacitePersonnes}
+              onChange={(e) => setForm({ ...form, capacitePersonnes: e.target.value })}
+              placeholder="Capacité (personnes/unité)"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          ) : (
+            <input
+              type="number"
+              min={1}
+              value={form.quantiteRequise}
+              onChange={(e) =>
+                setForm({ ...form, quantiteRequise: e.target.value })
+              }
+              placeholder="Quantité requise"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          )}
           <select
             value={form.etapeId}
             onChange={(e) => setForm({ ...form, etapeId: e.target.value })}
-            className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="">Tout le trek</option>
             {(etapes ?? []).map((e) => (

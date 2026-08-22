@@ -48,6 +48,7 @@ export const create = mutation({
     categorie: v.optional(v.string()),
     quantiteRequise: v.number(),
     notes: v.optional(v.string()),
+    capacitePersonnes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("materielItems", args);

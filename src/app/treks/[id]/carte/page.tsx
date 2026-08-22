@@ -15,6 +15,7 @@ import type {
 } from "@/components/ViaAlpinaCarte";
 import viaAlpina from "@/data/via-alpina-ch.json";
 import { estimerDureeH, formatDureeH, type ViaAlpinaStage } from "@/lib/via-alpina";
+import { calculerCouverture } from "@/lib/materiel";
 import CommentsThread from "@/components/CommentsThread";
 
 const catalog = viaAlpina.stages as ViaAlpinaStage[];
@@ -68,10 +69,13 @@ type MaterielItemAvecManque = {
   _id: Id<"materielItems">;
   nom: string;
   quantiteRequise: number;
+  capacitePersonnes?: number;
   etapeId?: Id<"etapes">;
   apports: { _id: Id<"materielApports">; quantite: number; participantNom: string }[];
-  apporte: number;
+  couvert: number;
+  requis: number;
   manque: number;
+  unite: "places" | "";
 };
 
 export default function CartePage() {
@@ -151,9 +155,13 @@ export default function CartePage() {
     notes: p.notes,
   }));
 
+  const totalParticipants = participants.length;
   const materielAvecManque: MaterielItemAvecManque[] = materielItems.map((item) => {
-    const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
-    return { ...item, apporte, manque: item.quantiteRequise - apporte };
+    const participantsConcernes = item.etapeId
+      ? (presenceByEtape.get(item.etapeId)?.length ?? 0)
+      : totalParticipants;
+    const couverture = calculerCouverture(item, participantsConcernes);
+    return { ...item, ...couverture };
   });
   const manquesGlobal = materielAvecManque.filter((item) => item.manque > 0 && !item.etapeId);
   const materielParEtape = new Map<string, MaterielItemAvecManque[]>();
@@ -569,7 +577,7 @@ function EtapeAccordionItem({
                       )}
                     </span>
                     <span className={item.manque > 0 ? "text-amber-700" : "text-emerald-700"}>
-                      {item.apporte}/{item.quantiteRequise}
+                      {item.couvert}/{item.requis} {item.unite}
                     </span>
                   </li>
                 ))}
