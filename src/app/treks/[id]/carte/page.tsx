@@ -43,6 +43,37 @@ const ViaAlpinaCarte = dynamic(() => import("@/components/ViaAlpinaCarte"), {
   ),
 });
 
+type EtapeAvecHebergement = {
+  _id: Id<"etapes">;
+  ordre: number;
+  nom: string;
+  pointDepart?: string;
+  pointArrivee?: string;
+  date?: string;
+  distanceKm?: number;
+  denivelePositif?: number;
+  deniveleNegatif?: number;
+  dureeEstimeeH?: number;
+  hebergement: {
+    nom: string;
+    type: "refuge" | "bivouac" | "hotel" | "autre";
+    contact?: string;
+    statutReservation: "a_faire" | "en_cours" | "confirme";
+    prixChf?: number;
+    notes?: string;
+  } | null;
+};
+
+type MaterielItemAvecManque = {
+  _id: Id<"materielItems">;
+  nom: string;
+  quantiteRequise: number;
+  etapeId?: Id<"etapes">;
+  apports: { _id: Id<"materielApports">; quantite: number; participantNom: string }[];
+  apporte: number;
+  manque: number;
+};
+
 export default function CartePage() {
   const { id } = useParams<{ id: string }>();
   const trekId = id as Id<"treks">;
@@ -65,9 +96,9 @@ export default function CartePage() {
   const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [placingPoint, setPlacingPoint] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [resumeOuvert, setResumeOuvert] = useState(false);
+  const [pleinEcran, setPleinEcran] = useState(true);
 
-  if (!etapes || !presences || !participants || !points) {
+  if (!etapes || !presences || !participants || !materielItems || !points) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-slate-100 text-sm text-slate-400">
         Chargement…
@@ -120,27 +151,24 @@ export default function CartePage() {
     notes: p.notes,
   }));
 
-  const materielAvecManque = (materielItems ?? []).map((item) => {
+  const materielAvecManque: MaterielItemAvecManque[] = materielItems.map((item) => {
     const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
     return { ...item, apporte, manque: item.quantiteRequise - apporte };
   });
-  const manquesGlobal = materielAvecManque.filter(
-    (item) => item.manque > 0 && !item.etapeId
-  );
-  const manquesParEtape = new Map<string, number>();
+  const manquesGlobal = materielAvecManque.filter((item) => item.manque > 0 && !item.etapeId);
+  const materielParEtape = new Map<string, MaterielItemAvecManque[]>();
   for (const item of materielAvecManque) {
-    if (item.etapeId && item.manque > 0) {
-      manquesParEtape.set(item.etapeId, (manquesParEtape.get(item.etapeId) ?? 0) + 1);
-    }
+    if (!item.etapeId) continue;
+    const list = materielParEtape.get(item.etapeId) ?? [];
+    list.push(item);
+    materielParEtape.set(item.etapeId, list);
   }
 
   const totalDistance = etapes.reduce((s, e) => s + (e.distanceKm ?? 0), 0);
   const totalDPlus = etapes.reduce((s, e) => s + (e.denivelePositif ?? 0), 0);
   const totalDMoins = etapes.reduce((s, e) => s + (e.deniveleNegatif ?? 0), 0);
-  const totalManques = manquesGlobal.length + manquesParEtape.size;
 
   const importedRefs = new Set(etapesSurCarte.map((e) => e.viaAlpinaRef).filter(Boolean));
-  const selectedEtape = etapes.find((e) => e._id === selectedEtapeId);
   const selectedStage = catalog.find((s) => s.ref === selectedStageRef);
   const selectedPoint = points.find((p) => p._id === selectedPointId);
 
@@ -151,8 +179,10 @@ export default function CartePage() {
     setPendingPoint(null);
   }
   function selectEtape(etapeId: string) {
-    clearSelection();
-    setSelectedEtapeId(etapeId);
+    setSelectedStageRef(null);
+    setSelectedPointId(null);
+    setPendingPoint(null);
+    setSelectedEtapeId((prev) => (prev === etapeId ? null : etapeId));
   }
   function selectStage(ref: string) {
     clearSelection();
@@ -186,28 +216,209 @@ export default function CartePage() {
     setSelectedEtapeId(newId);
   }
 
-  const detailPanelOuvert = !!(selectedEtape || selectedStage || selectedPoint || pendingPoint);
+  const rightPanelOuvert = !!(selectedStage || selectedPoint || pendingPoint);
+
+  const carte = (
+    <ViaAlpinaCarte
+      catalog={catalog}
+      etapes={etapesSurCarte}
+      hebergements={hebergementsSurCarte}
+      pointsInteret={pointsSurCarte}
+      selectedEtapeId={selectedEtapeId}
+      onSelectEtape={selectEtape}
+      selectedStageRef={selectedStageRef}
+      onSelectStage={selectStage}
+      selectedPointId={selectedPointId}
+      onSelectPoint={selectPoint}
+      placingPoint={placingPoint}
+      onMapClickForPoint={(lat, lng) => {
+        clearSelection();
+        setPendingPoint({ lat, lng });
+        setPlacingPoint(false);
+      }}
+    />
+  );
+
+  const itineraire = (
+    <>
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-900">Mon itinéraire</h2>
+        <button
+          type="button"
+          onClick={() => setPleinEcran((v) => !v)}
+          className="shrink-0 text-xs text-slate-400 underline hover:text-slate-700"
+        >
+          {pleinEcran ? "Vue classique" : "Carte plein écran"}
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {etapes.length} étape{etapes.length > 1 ? "s" : ""} ·{" "}
+        {Math.round(totalDistance * 10) / 10} km · +{totalDPlus}m / -{totalDMoins}m ·{" "}
+        {participants.length} 👥
+      </p>
+      {manquesGlobal.length > 0 && (
+        <p className="mt-2 text-xs text-amber-800">
+          ⚠️ Matériel manquant (tout le trek) : {manquesGlobal.map((i) => i.nom).join(", ")}{" "}
+          <Link href={`/treks/${id}/materiel`} className="font-medium underline">
+            Voir →
+          </Link>
+        </p>
+      )}
+
+      <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+        {etapes.map((e) => (
+          <EtapeAccordionItem
+            key={e._id}
+            etape={e}
+            expanded={e._id === selectedEtapeId}
+            onToggle={() => selectEtape(e._id)}
+            participantsNoms={presenceByEtape.get(e._id) ?? []}
+            materielEtape={materielParEtape.get(e._id) ?? []}
+            onDelete={async () => {
+              await deleteEtape({ etapeId: e._id });
+              clearSelection();
+            }}
+            onSaveHebergement={(data) => upsertHebergement({ etapeId: e._id, ...data })}
+          />
+        ))}
+        {etapes.length === 0 && (
+          <p className="py-3 text-sm text-slate-400">
+            Aucune étape. Clique une ligne bleue sur la carte pour importer une
+            étape officielle.
+          </p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowManualForm((v) => !v)}
+        className="mt-3 block text-left text-sm text-slate-500 underline hover:text-slate-800"
+      >
+        {showManualForm ? "Annuler" : "+ Étape manuelle (hors tracé)"}
+      </button>
+      {showManualForm && (
+        <ManualEtapeForm
+          trekId={trekId}
+          onCreated={(newId) => {
+            setShowManualForm(false);
+            selectEtape(newId);
+          }}
+        />
+      )}
+
+      {points.length > 0 && (
+        <>
+          <h2 className="mt-4 text-sm font-semibold text-slate-900">Points d&apos;intérêt</h2>
+          <ol className="mt-2 space-y-1">
+            {points.map((p) => (
+              <li key={p._id}>
+                <button
+                  type="button"
+                  onClick={() => selectPoint(p._id)}
+                  className={`w-full rounded-lg px-2 py-1.5 text-left text-sm ${
+                    p._id === selectedPointId
+                      ? "bg-slate-900 text-white"
+                      : "hover:bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {EMOJI_POI[p.type]} {p.nom}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          clearSelection();
+          setPlacingPoint(true);
+        }}
+        disabled={placingPoint}
+        className="mt-3 block text-left text-sm text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
+      >
+        {placingPoint ? "Clique sur la carte…" : "+ Point d'intérêt (vue, lac...)"}
+      </button>
+    </>
+  );
+
+  const panneauDroit = rightPanelOuvert && (
+    <>
+      <button
+        type="button"
+        onClick={clearSelection}
+        className="float-right text-slate-400 hover:text-slate-700"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+
+      {selectedStage && (
+        <StageDetailPanel
+          stage={selectedStage}
+          dejaImportee={importedRefs.has(selectedStage.ref)}
+          onImport={() => importerEtape(selectedStage)}
+        />
+      )}
+
+      {!selectedStage && selectedPoint && (
+        <PointDetailPanel
+          point={selectedPoint}
+          onDelete={async () => {
+            await deletePoint({ pointId: selectedPoint._id });
+            clearSelection();
+          }}
+        />
+      )}
+
+      {pendingPoint && (
+        <NewPointForm
+          lat={pendingPoint.lat}
+          lng={pendingPoint.lng}
+          onCancel={clearSelection}
+          onCreate={async (nom, type) => {
+            const newId = await createPoint({
+              trekId,
+              nom,
+              type,
+              lat: pendingPoint.lat,
+              lng: pendingPoint.lng,
+            });
+            setPendingPoint(null);
+            setSelectedPointId(newId);
+          }}
+        />
+      )}
+    </>
+  );
+
+  if (!pleinEcran) {
+    return (
+      <div className="h-full overflow-y-auto px-4 py-6">
+        <div className="mx-auto max-w-3xl space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            {itineraire}
+          </div>
+          <div className="h-[420px] w-full overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+            {carte}
+          </div>
+          <p className="text-xs text-slate-400">
+            Tracé complet de la Via Alpina suisse (Vaduz → Montreux) : © contributeurs
+            OpenStreetMap (ODbL). Fond de carte : © swisstopo.
+          </p>
+          {rightPanelOuvert && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              {panneauDroit}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full">
-      <ViaAlpinaCarte
-        catalog={catalog}
-        etapes={etapesSurCarte}
-        hebergements={hebergementsSurCarte}
-        pointsInteret={pointsSurCarte}
-        selectedEtapeId={selectedEtapeId}
-        onSelectEtape={selectEtape}
-        selectedStageRef={selectedStageRef}
-        onSelectStage={selectStage}
-        selectedPointId={selectedPointId}
-        onSelectPoint={selectPoint}
-        placingPoint={placingPoint}
-        onMapClickForPoint={(lat, lng) => {
-          clearSelection();
-          setPendingPoint({ lat, lng });
-          setPlacingPoint(false);
-        }}
-      />
+      {carte}
 
       {placingPoint && (
         <div className="pointer-events-none absolute left-1/2 top-3 z-[1100] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
@@ -215,245 +426,239 @@ export default function CartePage() {
         </div>
       )}
 
-      {/* Colonne flottante gauche : résumé + itinéraire + points d'intérêt */}
-      <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex max-w-[calc(100vw-1.5rem)] flex-col gap-3">
-        <div className="pointer-events-auto w-[340px] max-w-[calc(100vw-1.5rem)] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-          <button
-            type="button"
-            onClick={() => setResumeOuvert((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
-          >
-            <span className="text-sm font-semibold text-slate-900">Résumé</span>
-            <span className="text-xs text-slate-500">
-              {etapes.length} ét. · {Math.round(totalDistance * 10) / 10} km ·{" "}
-              {participants.length} 👥
-              {totalManques > 0 ? ` · ⚠️ ${totalManques}` : ""}
-              <span className="ml-1">{resumeOuvert ? "▲" : "▼"}</span>
-            </span>
-          </button>
-          {resumeOuvert && (
-            <div className="max-h-64 overflow-y-auto border-t border-slate-100 px-4 py-3">
-              <p className="text-xs text-slate-500">
-                +{totalDPlus}m / -{totalDMoins}m au total
-              </p>
-              {manquesGlobal.length > 0 && (
-                <p className="mt-2 text-xs text-amber-800">
-                  ⚠️ Manque (tout le trek) : {manquesGlobal.map((i) => i.nom).join(", ")}{" "}
-                  <Link href={`/treks/${id}/materiel`} className="font-medium underline">
-                    Voir →
-                  </Link>
-                </p>
-              )}
-              {etapes.length > 0 && (
-                <table className="mt-2 w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-slate-400">
-                      <th className="pb-1 pr-2 font-medium">Étape</th>
-                      <th className="pb-1 pr-2 font-medium">Distance</th>
-                      <th className="pb-1 pr-2 font-medium">👥</th>
-                      <th className="pb-1 font-medium">Matériel</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {etapes.map((e) => {
-                      const nbManques = manquesParEtape.get(e._id) ?? 0;
-                      const noms = presenceByEtape.get(e._id) ?? [];
-                      return (
-                        <tr
-                          key={e._id}
-                          onClick={() => selectEtape(e._id)}
-                          className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
-                        >
-                          <td className="py-1 pr-2 text-slate-800">
-                            J{e.ordre} — {e.nom}
-                          </td>
-                          <td className="py-1 pr-2 text-slate-500">
-                            {e.distanceKm ? `${e.distanceKm} km` : "?"}
-                          </td>
-                          <td className="py-1 pr-2 text-slate-500">
-                            {noms.length > 0 ? noms.length : "—"}
-                          </td>
-                          <td className="py-1">
-                            {nbManques > 0 ? (
-                              <span className="text-amber-700">⚠️ {nbManques}</span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-        </div>
-
+      {/* Panneau flottant gauche : itinéraire (panneau principal) */}
+      <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
         <div
           className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
           style={{
-            width: 340,
-            height: 420,
-            minWidth: 240,
-            minHeight: 120,
+            width: 380,
+            height: 560,
+            minWidth: 260,
+            minHeight: 150,
             maxWidth: "80vw",
-            maxHeight: "85vh",
+            maxHeight: "88vh",
           }}
         >
-          <h2 className="text-sm font-semibold text-slate-900">Mon itinéraire</h2>
-          <ol className="mt-2 space-y-1">
-            {etapes.map((e) => (
-              <li key={e._id}>
-                <button
-                  type="button"
-                  onClick={() => selectEtape(e._id)}
-                  className={`w-full rounded-lg px-2 py-1.5 text-left text-sm ${
-                    e._id === selectedEtapeId
-                      ? "bg-slate-900 text-white"
-                      : "hover:bg-slate-100 text-slate-700"
-                  }`}
-                >
-                  J{e.ordre} — {e.nom}
-                </button>
-              </li>
-            ))}
-            {etapes.length === 0 && (
-              <p className="text-sm text-slate-400">
-                Aucune étape. Clique une ligne bleue sur la carte pour importer
-                une étape officielle.
-              </p>
-            )}
-          </ol>
-          <button
-            type="button"
-            onClick={() => setShowManualForm((v) => !v)}
-            className="mt-3 text-left text-sm text-slate-500 underline hover:text-slate-800"
-          >
-            {showManualForm ? "Annuler" : "+ Étape manuelle (hors tracé)"}
-          </button>
-          {showManualForm && (
-            <ManualEtapeForm
-              trekId={trekId}
-              onCreated={(newId) => {
-                setShowManualForm(false);
-                selectEtape(newId);
-              }}
-            />
-          )}
-
-          {points.length > 0 && (
-            <>
-              <h2 className="mt-4 text-sm font-semibold text-slate-900">
-                Points d&apos;intérêt
-              </h2>
-              <ol className="mt-2 space-y-1">
-                {points.map((p) => (
-                  <li key={p._id}>
-                    <button
-                      type="button"
-                      onClick={() => selectPoint(p._id)}
-                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm ${
-                        p._id === selectedPointId
-                          ? "bg-slate-900 text-white"
-                          : "hover:bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {EMOJI_POI[p.type]} {p.nom}
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              clearSelection();
-              setPlacingPoint(true);
-            }}
-            disabled={placingPoint}
-            className="mt-3 text-left text-sm text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
-          >
-            {placingPoint ? "Clique sur la carte…" : "+ Point d'intérêt (vue, lac...)"}
-          </button>
+          {itineraire}
         </div>
       </div>
 
-      {/* Panneau flottant droit : détail de la sélection */}
-      {detailPanelOuvert && (
+      {/* Panneau flottant droit : étape officielle à importer / point d'intérêt */}
+      {rightPanelOuvert && (
         <div className="pointer-events-none absolute right-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
           <div
             className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
             style={{
-              width: 360,
-              height: 480,
-              minWidth: 260,
+              width: 340,
+              height: 320,
+              minWidth: 240,
               minHeight: 120,
               maxWidth: "80vw",
               maxHeight: "85vh",
             }}
           >
-            <button
-              type="button"
-              onClick={clearSelection}
-              className="float-right text-slate-400 hover:text-slate-700"
-              aria-label="Fermer"
-            >
-              ✕
-            </button>
+            {panneauDroit}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-            {selectedEtape && (
-              <EtapeDetailPanel
-                etape={selectedEtape}
-                participantsNoms={presenceByEtape.get(selectedEtape._id) ?? []}
-                onDelete={async () => {
-                  await deleteEtape({ etapeId: selectedEtape._id });
-                  clearSelection();
-                }}
-                onSaveHebergement={(data) =>
-                  upsertHebergement({ etapeId: selectedEtape._id, ...data })
-                }
-              />
-            )}
+function EtapeAccordionItem({
+  etape,
+  expanded,
+  onToggle,
+  participantsNoms,
+  materielEtape,
+  onDelete,
+  onSaveHebergement,
+}: {
+  etape: EtapeAvecHebergement;
+  expanded: boolean;
+  onToggle: () => void;
+  participantsNoms: string[];
+  materielEtape: MaterielItemAvecManque[];
+  onDelete: () => void;
+  onSaveHebergement: (data: {
+    nom: string;
+    type: "refuge" | "bivouac" | "hotel" | "autre";
+    contact?: string;
+    statutReservation: "a_faire" | "en_cours" | "confirme";
+    prixChf?: number;
+    notes?: string;
+  }) => void;
+}) {
+  const heb = etape.hebergement;
+  const nbManques = materielEtape.filter((i) => i.manque > 0).length;
+  const duree =
+    etape.dureeEstimeeH ??
+    (etape.distanceKm !== undefined &&
+    etape.denivelePositif !== undefined &&
+    etape.deniveleNegatif !== undefined
+      ? estimerDureeH(etape.distanceKm, etape.denivelePositif, etape.deniveleNegatif)
+      : undefined);
 
-            {!selectedEtape && selectedStage && (
-              <StageDetailPanel
-                stage={selectedStage}
-                dejaImportee={importedRefs.has(selectedStage.ref)}
-                onImport={() => importerEtape(selectedStage)}
-              />
-            )}
+  const [hebForm, setHebForm] = useState({
+    nom: heb?.nom ?? "",
+    type: heb?.type ?? "refuge",
+    contact: heb?.contact ?? "",
+    statutReservation: heb?.statutReservation ?? "a_faire",
+    prixChf: heb?.prixChf?.toString() ?? "",
+    notes: heb?.notes ?? "",
+  });
 
-            {!selectedEtape && !selectedStage && selectedPoint && (
-              <PointDetailPanel
-                point={selectedPoint}
-                onDelete={async () => {
-                  await deletePoint({ pointId: selectedPoint._id });
-                  clearSelection();
-                }}
-              />
-            )}
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left ${
+          expanded ? "bg-slate-900 text-white" : "hover:bg-slate-50 text-slate-800"
+        }`}
+      >
+        <span className="text-sm font-medium">
+          J{etape.ordre} — {etape.nom}
+        </span>
+        <span className={`shrink-0 text-xs ${expanded ? "text-slate-300" : "text-slate-400"}`}>
+          {etape.distanceKm ? `${etape.distanceKm}km` : ""}
+          {participantsNoms.length > 0 ? ` · 👥${participantsNoms.length}` : ""}
+          {nbManques > 0 ? ` · ⚠️${nbManques}` : ""}
+          <span className="ml-1">{expanded ? "▲" : "▼"}</span>
+        </span>
+      </button>
 
-            {pendingPoint && (
-              <NewPointForm
-                lat={pendingPoint.lat}
-                lng={pendingPoint.lng}
-                onCancel={clearSelection}
-                onCreate={async (nom, type) => {
-                  const newId = await createPoint({
-                    trekId,
-                    nom,
-                    type,
-                    lat: pendingPoint.lat,
-                    lng: pendingPoint.lng,
-                  });
-                  setPendingPoint(null);
-                  setSelectedPointId(newId);
-                }}
-              />
+      {expanded && (
+        <div className="space-y-3 px-2 py-3 text-sm">
+          <p className="text-slate-500">
+            {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
+            {etape.distanceKm ? ` · ${etape.distanceKm} km` : ""}
+            {etape.denivelePositif ? ` · +${etape.denivelePositif}m` : ""}
+            {etape.deniveleNegatif ? ` / -${etape.deniveleNegatif}m` : ""}
+            {duree !== undefined ? ` · ~${formatDureeH(duree)}` : ""}
+          </p>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Participants
+            </p>
+            <p className="mt-1 text-slate-700">
+              {participantsNoms.length > 0
+                ? participantsNoms.join(", ")
+                : "Personne d'inscrit pour l'instant"}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Matériel
+            </p>
+            {materielEtape.length === 0 ? (
+              <p className="mt-1 text-slate-400">Aucun matériel spécifique à cette étape.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {materielEtape.map((item) => (
+                  <li key={item._id} className="flex items-baseline justify-between gap-2">
+                    <span className="text-slate-700">
+                      {item.nom}
+                      {item.apports.length > 0 && (
+                        <span className="text-xs text-slate-400">
+                          {" "}
+                          ({item.apports.map((a) => a.participantNom).join(", ")})
+                        </span>
+                      )}
+                    </span>
+                    <span className={item.manque > 0 ? "text-amber-700" : "text-emerald-700"}>
+                      {item.apporte}/{item.quantiteRequise}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
+
+          <details open={!!heb}>
+            <summary className="cursor-pointer text-slate-600">
+              {heb ? `🏠 ${heb.nom} — modifier` : "Ajouter un hébergement"}
+            </summary>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!hebForm.nom.trim()) return;
+                onSaveHebergement({
+                  nom: hebForm.nom.trim(),
+                  type: hebForm.type,
+                  contact: hebForm.contact.trim() || undefined,
+                  statutReservation: hebForm.statutReservation,
+                  prixChf: hebForm.prixChf ? Number(hebForm.prixChf) : undefined,
+                  notes: hebForm.notes.trim() || undefined,
+                });
+              }}
+              className="mt-2 grid grid-cols-2 gap-2"
+            >
+              <input
+                value={hebForm.nom}
+                onChange={(e) => setHebForm({ ...hebForm, nom: e.target.value })}
+                required
+                placeholder="Nom du refuge / lieu de bivouac"
+                className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <select
+                value={hebForm.type}
+                onChange={(e) => setHebForm({ ...hebForm, type: e.target.value as typeof hebForm.type })}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="refuge">Refuge</option>
+                <option value="bivouac">Bivouac</option>
+                <option value="hotel">Hôtel</option>
+                <option value="autre">Autre</option>
+              </select>
+              <select
+                value={hebForm.statutReservation}
+                onChange={(e) =>
+                  setHebForm({ ...hebForm, statutReservation: e.target.value as typeof hebForm.statutReservation })
+                }
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="a_faire">À réserver</option>
+                <option value="en_cours">Réservation en cours</option>
+                <option value="confirme">Confirmé</option>
+              </select>
+              <input
+                value={hebForm.contact}
+                onChange={(e) => setHebForm({ ...hebForm, contact: e.target.value })}
+                placeholder="Contact / téléphone"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={hebForm.prixChf}
+                onChange={(e) => setHebForm({ ...hebForm, prixChf: e.target.value })}
+                placeholder="Prix (CHF)"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <textarea
+                value={hebForm.notes}
+                onChange={(e) => setHebForm({ ...hebForm, notes: e.target.value })}
+                placeholder="Notes"
+                rows={2}
+                className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                className="col-span-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                Enregistrer l&apos;hébergement
+              </button>
+            </form>
+          </details>
+
+          <CommentsThread etapeId={etape._id} />
+
+          <button type="button" onClick={onDelete} className="text-xs text-red-500 hover:text-red-700">
+            Supprimer l&apos;étape
+          </button>
         </div>
       )}
     </div>
@@ -582,161 +787,6 @@ function NewPointForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function EtapeDetailPanel({
-  etape,
-  participantsNoms,
-  onDelete,
-  onSaveHebergement,
-}: {
-  etape: {
-    _id: Id<"etapes">;
-    ordre: number;
-    nom: string;
-    pointDepart?: string;
-    pointArrivee?: string;
-    date?: string;
-    distanceKm?: number;
-    denivelePositif?: number;
-    deniveleNegatif?: number;
-    hebergement: {
-      nom: string;
-      type: "refuge" | "bivouac" | "hotel" | "autre";
-      contact?: string;
-      statutReservation: "a_faire" | "en_cours" | "confirme";
-      prixChf?: number;
-      notes?: string;
-    } | null;
-  };
-  participantsNoms: string[];
-  onDelete: () => void;
-  onSaveHebergement: (data: {
-    nom: string;
-    type: "refuge" | "bivouac" | "hotel" | "autre";
-    contact?: string;
-    statutReservation: "a_faire" | "en_cours" | "confirme";
-    prixChf?: number;
-    notes?: string;
-  }) => void;
-}) {
-  const heb = etape.hebergement;
-  const [hebForm, setHebForm] = useState({
-    nom: heb?.nom ?? "",
-    type: heb?.type ?? "refuge",
-    contact: heb?.contact ?? "",
-    statutReservation: heb?.statutReservation ?? "a_faire",
-    prixChf: heb?.prixChf?.toString() ?? "",
-    notes: heb?.notes ?? "",
-  });
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <p className="font-medium text-slate-900">
-          Jour {etape.ordre} — {etape.nom}
-        </p>
-        <p className="text-sm text-slate-500">
-          {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
-          {etape.distanceKm ? ` · ${etape.distanceKm} km` : ""}
-          {etape.denivelePositif ? ` · +${etape.denivelePositif}m` : ""}
-          {etape.deniveleNegatif ? ` / -${etape.deniveleNegatif}m` : ""}
-        </p>
-        <p className="mt-1 text-xs text-slate-400">
-          {participantsNoms.length > 0
-            ? `👥 ${participantsNoms.join(", ")}`
-            : "Personne d'inscrit pour l'instant"}
-        </p>
-      </div>
-
-      <details className="text-sm" open={!!heb}>
-        <summary className="cursor-pointer text-slate-600">
-          {heb ? `🏠 ${heb.nom} — modifier` : "Ajouter un hébergement"}
-        </summary>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!hebForm.nom.trim()) return;
-            onSaveHebergement({
-              nom: hebForm.nom.trim(),
-              type: hebForm.type,
-              contact: hebForm.contact.trim() || undefined,
-              statutReservation: hebForm.statutReservation,
-              prixChf: hebForm.prixChf ? Number(hebForm.prixChf) : undefined,
-              notes: hebForm.notes.trim() || undefined,
-            });
-          }}
-          className="mt-3 grid grid-cols-2 gap-3"
-        >
-          <input
-            value={hebForm.nom}
-            onChange={(e) => setHebForm({ ...hebForm, nom: e.target.value })}
-            required
-            placeholder="Nom du refuge / lieu de bivouac"
-            className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <select
-            value={hebForm.type}
-            onChange={(e) => setHebForm({ ...hebForm, type: e.target.value as typeof hebForm.type })}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="refuge">Refuge</option>
-            <option value="bivouac">Bivouac</option>
-            <option value="hotel">Hôtel</option>
-            <option value="autre">Autre</option>
-          </select>
-          <select
-            value={hebForm.statutReservation}
-            onChange={(e) =>
-              setHebForm({ ...hebForm, statutReservation: e.target.value as typeof hebForm.statutReservation })
-            }
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="a_faire">À réserver</option>
-            <option value="en_cours">Réservation en cours</option>
-            <option value="confirme">Confirmé</option>
-          </select>
-          <input
-            value={hebForm.contact}
-            onChange={(e) => setHebForm({ ...hebForm, contact: e.target.value })}
-            placeholder="Contact / téléphone"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="number"
-            step="0.01"
-            value={hebForm.prixChf}
-            onChange={(e) => setHebForm({ ...hebForm, prixChf: e.target.value })}
-            placeholder="Prix (CHF)"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <textarea
-            value={hebForm.notes}
-            onChange={(e) => setHebForm({ ...hebForm, notes: e.target.value })}
-            placeholder="Notes"
-            rows={2}
-            className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="col-span-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
-          >
-            Enregistrer l&apos;hébergement
-          </button>
-        </form>
-      </details>
-
-      <CommentsThread etapeId={etape._id} />
-
-      <button
-        type="button"
-        onClick={onDelete}
-        className="text-xs text-red-500 hover:text-red-700"
-      >
-        Supprimer l&apos;étape
-      </button>
-    </div>
   );
 }
 

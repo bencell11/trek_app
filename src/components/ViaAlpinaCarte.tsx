@@ -290,7 +290,7 @@ export default function ViaAlpinaCarte({
           onClick={() => onSelectStage(stage.ref)}
           pathOptions={{
             color: stage.ref === selectedStageRef ? "#f59e0b" : "#2563eb",
-            weight: stage.ref === selectedStageRef ? 6 : 4,
+            weight: stage.ref === selectedStageRef ? 8 : 6,
             opacity: stage.ref === selectedStageRef ? 1 : 0.85,
           }}
           tooltip={
@@ -341,7 +341,7 @@ export default function ViaAlpinaCarte({
               onClick={() => onSelectEtape(etape.id)}
               pathOptions={{
                 color: selected ? "#f59e0b" : "#0f172a",
-                weight: selected ? 6 : 4,
+                weight: selected ? 9 : 7,
                 opacity: 0.95,
               }}
               tooltip={tooltipContent}
