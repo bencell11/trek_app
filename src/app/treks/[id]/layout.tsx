@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
 const TABS = [
-  { href: "", label: "Vue d'ensemble" },
   { href: "/carte", label: "Carte" },
   { href: "/participants", label: "Participants" },
   { href: "/materiel", label: "Matériel" },
@@ -19,6 +18,7 @@ export default function TrekLayout({
   children: React.ReactNode;
 }) {
   const { id } = useParams<{ id: string }>();
+  const pathname = usePathname();
   const trekId = id as Id<"treks">;
   const trek = useQuery(api.treks.get, { trekId });
 
@@ -50,15 +50,22 @@ export default function TrekLayout({
       )}
 
       <nav className="mt-6 flex gap-1 border-b border-slate-200">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.href}
-            href={`/treks/${id}${tab.href}`}
-            className="rounded-t-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-          >
-            {tab.label}
-          </Link>
-        ))}
+        {TABS.map((tab) => {
+          const active = pathname === `/treks/${id}${tab.href}`;
+          return (
+            <Link
+              key={tab.href}
+              href={`/treks/${id}${tab.href}`}
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium ${
+                active
+                  ? "border-b-2 border-slate-900 text-slate-900"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="mt-6">{children}</div>

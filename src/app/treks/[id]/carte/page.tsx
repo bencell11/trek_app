@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useState } from "react";
@@ -29,6 +30,7 @@ export default function CartePage() {
   const etapes = useQuery(api.etapes.listWithHebergement, { trekId });
   const presences = useQuery(api.presence.listByTrek, { trekId });
   const participants = useQuery(api.participants.listByTrek, { trekId });
+  const materielItems = useQuery(api.materiel.listByTrek, { trekId });
 
   const createEtape = useMutation(api.etapes.create);
   const deleteEtape = useMutation(api.etapes.remove);
@@ -68,6 +70,13 @@ export default function CartePage() {
     participantsNoms: presenceByEtape.get(e._id) ?? [],
   }));
 
+  const manques = (materielItems ?? [])
+    .map((item) => {
+      const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
+      return { ...item, apporte, manque: item.quantiteRequise - apporte };
+    })
+    .filter((item) => item.manque > 0);
+
   const importedRefs = new Set(etapesSurCarte.map((e) => e.viaAlpinaRef).filter(Boolean));
   const selectedEtape = etapes.find((e) => e._id === selectedEtapeId);
   const selectedStage = catalog.find((s) => s.ref === selectedStageRef);
@@ -105,6 +114,22 @@ export default function CartePage() {
 
   return (
     <div className="space-y-4">
+      {manques.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+          <span className="font-semibold text-amber-900">
+            ⚠️ Matériel manquant ({manques.length})
+          </span>{" "}
+          <span className="text-amber-800">
+            {manques.map((item) => item.nom).join(", ")}
+          </span>{" "}
+          <Link
+            href={`/treks/${id}/materiel`}
+            className="font-medium text-amber-900 underline"
+          >
+            Voir →
+          </Link>
+        </div>
+      )}
       <ViaAlpinaCarte
         catalog={catalog}
         etapes={etapesSurCarte}
