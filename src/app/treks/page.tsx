@@ -13,6 +13,7 @@ export default function TreksPage() {
   const createTrek = useMutation(api.treks.create);
   const deleteTrek = useMutation(api.treks.remove);
   const { nom, setNom } = useCurrentUser();
+  const estAdmin = nom?.trim().toLowerCase() === "ben";
 
   const [nomTrek, setNomTrek] = useState("");
   const [showDetails, setShowDetails] = useState(false);
@@ -71,17 +72,19 @@ export default function TreksPage() {
                 </p>
               )}
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`Supprimer "${trek.nom}" et tout son contenu ?`)) {
-                  deleteTrek({ trekId: trek._id });
-                }
-              }}
-              className="absolute right-3 top-3 hidden text-xs text-slate-400 hover:text-red-600 group-hover:block"
-            >
-              Supprimer
-            </button>
+            {estAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Supprimer "${trek.nom}" et tout son contenu ?`)) {
+                    deleteTrek({ trekId: trek._id, nomDemandeur: nom ?? "" });
+                  }
+                }}
+                className="absolute right-3 top-3 hidden text-xs text-slate-400 hover:text-red-600 group-hover:block"
+              >
+                Supprimer
+              </button>
+            )}
           </li>
         ))}
         {treks && treks.length === 0 && (

@@ -31,9 +31,19 @@ export const create = mutation({
   },
 });
 
+// Pas de vraie authentification dans cette appli : ce nom est juste ce que
+// le navigateur de l'appelant a stocké localement, donc ce contrôle évite
+// une suppression accidentelle mais n'empêche pas quelqu'un de déterminé de
+// le contourner (ex: appel direct de la mutation).
+const ADMIN_NOM = "ben";
+
 export const remove = mutation({
-  args: { trekId: v.id("treks") },
-  handler: async (ctx, { trekId }) => {
+  args: { trekId: v.id("treks"), nomDemandeur: v.string() },
+  handler: async (ctx, { trekId, nomDemandeur }) => {
+    if (nomDemandeur.trim().toLowerCase() !== ADMIN_NOM) {
+      throw new Error("Seul Ben peut supprimer un trek.");
+    }
+
     const points = await ctx.db
       .query("pointsInteret")
       .withIndex("by_trek", (q) => q.eq("trekId", trekId))
