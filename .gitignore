@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scripts/fetch-via-alpina.py raw Overpass/swisstopo cache
+/scripts/.cache/

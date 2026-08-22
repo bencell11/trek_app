@@ -33,6 +33,12 @@ export const create = mutation({
     denivelePositif: v.optional(v.number()),
     deniveleNegatif: v.optional(v.number()),
     dureeEstimeeH: v.optional(v.number()),
+    pointDepartLat: v.optional(v.number()),
+    pointDepartLng: v.optional(v.number()),
+    pointArriveeLat: v.optional(v.number()),
+    pointArriveeLng: v.optional(v.number()),
+    trace: v.optional(v.array(v.array(v.number()))),
+    viaAlpinaRef: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -71,6 +77,12 @@ export const remove = mutation({
       for (const a of apports) await ctx.db.delete(a._id);
       await ctx.db.delete(item._id);
     }
+
+    const comments = await ctx.db
+      .query("commentaires")
+      .withIndex("by_etape", (q) => q.eq("etapeId", etapeId))
+      .collect();
+    for (const c of comments) await ctx.db.delete(c._id);
 
     await ctx.db.delete(etapeId);
   },

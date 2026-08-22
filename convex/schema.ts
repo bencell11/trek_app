@@ -22,6 +22,14 @@ export default defineSchema({
     deniveleNegatif: v.optional(v.number()),
     dureeEstimeeH: v.optional(v.number()),
     notes: v.optional(v.string()),
+    // Renseignés quand l'étape est importée depuis le tracé officiel de la
+    // Via Alpina (voir src/data/via-alpina-ch.json), pour l'affichage carte.
+    pointDepartLat: v.optional(v.number()),
+    pointDepartLng: v.optional(v.number()),
+    pointArriveeLat: v.optional(v.number()),
+    pointArriveeLng: v.optional(v.number()),
+    trace: v.optional(v.array(v.array(v.number()))),
+    viaAlpinaRef: v.optional(v.string()),
   }).index("by_trek", ["trekId"]),
 
   hebergements: defineTable({
@@ -75,4 +83,10 @@ export default defineSchema({
   })
     .index("by_item", ["materielItemId"])
     .index("by_participant", ["participantId"]),
+
+  commentaires: defineTable({
+    etapeId: v.id("etapes"),
+    auteur: v.string(),
+    texte: v.string(),
+  }).index("by_etape", ["etapeId"]),
 });

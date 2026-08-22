@@ -8,7 +8,7 @@ import type { Id } from "@convex/_generated/dataModel";
 
 const TABS = [
   { href: "", label: "Vue d'ensemble" },
-  { href: "/etapes", label: "Étapes" },
+  { href: "/carte", label: "Carte" },
   { href: "/participants", label: "Participants" },
   { href: "/materiel", label: "Matériel" },
 ];

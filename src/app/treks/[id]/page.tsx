@@ -60,10 +60,10 @@ export default function TrekOverviewPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Itinéraire</h2>
           <Link
-            href={`/treks/${id}/etapes`}
+            href={`/treks/${id}/carte`}
             className="text-sm text-slate-500 hover:text-slate-800"
           >
-            Gérer les étapes →
+            Voir la carte →
           </Link>
         </div>
 
