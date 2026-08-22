@@ -23,7 +23,7 @@ export default function CommentsThread({ etapeId }: { etapeId: Id<"etapes"> }) {
   return (
     <div>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        💬 Commentaires
+        Commentaires
       </h3>
       <ul className="mt-2 space-y-2">
         {(comments ?? []).map((c) => (

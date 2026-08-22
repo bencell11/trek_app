@@ -379,11 +379,11 @@ export default function CartePage() {
       <p className="mt-1 text-xs text-slate-500">
         {etapes.length} étape{etapes.length > 1 ? "s" : ""} ·{" "}
         {Math.round(totalDistance * 10) / 10} km · +{totalDPlus}m / -{totalDMoins}m ·{" "}
-        {participants.length} 👥
+        {participants.length} participant{participants.length > 1 ? "s" : ""}
       </p>
       {manquesGlobal.length > 0 && (
         <p className="mt-2 text-xs text-amber-800">
-          ⚠️ Matériel manquant (tout le trek) : {manquesGlobal.map((i) => i.nom).join(", ")}{" "}
+          Matériel manquant (tout le trek) : {manquesGlobal.map((i) => i.nom).join(", ")}{" "}
           <Link href={`/treks/${id}/materiel`} className="font-medium underline">
             Voir →
           </Link>
@@ -451,7 +451,7 @@ export default function CartePage() {
                       : "hover:bg-slate-100 text-slate-700"
                   }`}
                 >
-                  {EMOJI_POI[p.type]} {p.nom}
+                  {p.nom}
                 </button>
               </li>
             ))}
@@ -676,8 +676,8 @@ function EtapeAccordionItem({
         </span>
         <span className="shrink-0 text-xs text-slate-400">
           {etape.distanceKm ? `${etape.distanceKm}km` : ""}
-          {participantsNoms.length > 0 ? ` · 👥${participantsNoms.length}` : ""}
-          {nbManques > 0 ? ` · ⚠️${nbManques}` : ""}
+          {participantsNoms.length > 0 ? ` · ${participantsNoms.length} part.` : ""}
+          {nbManques > 0 ? ` · ${nbManques} manque${nbManques > 1 ? "s" : ""}` : ""}
           <span className="ml-1">{expanded ? "▲" : "▼"}</span>
         </span>
       </button>
@@ -690,22 +690,22 @@ function EtapeAccordionItem({
             </span>
             {etape.distanceKm !== undefined && (
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                📏 {etape.distanceKm} km
+                {etape.distanceKm} km
               </span>
             )}
             {etape.denivelePositif !== undefined && (
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                ↗ +{etape.denivelePositif}m
+                +{etape.denivelePositif}m
               </span>
             )}
             {etape.deniveleNegatif !== undefined && (
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                ↘ -{etape.deniveleNegatif}m
+                -{etape.deniveleNegatif}m
               </span>
             )}
             {duree !== undefined && (
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                ⏱ ~{formatDureeH(duree)}
+                ~{formatDureeH(duree)}
               </span>
             )}
           </div>
@@ -713,7 +713,7 @@ function EtapeAccordionItem({
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                👥 Participants
+                Participants
               </p>
               {peuxParticiper && (
                 <button
@@ -725,7 +725,7 @@ function EtapeAccordionItem({
                       : "border-slate-200 text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  {jeParticipe ? "✓ Je viens" : "+ Je participe"}
+                  {jeParticipe ? "Je viens" : "+ Je participe"}
                 </button>
               )}
             </div>
@@ -747,7 +747,7 @@ function EtapeAccordionItem({
 
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              🎒 Matériel
+              Matériel
             </p>
             {materielEtape.length === 0 ? (
               <p className="mt-1 text-slate-400">Aucun matériel spécifique à cette étape.</p>
@@ -783,7 +783,7 @@ function EtapeAccordionItem({
 
           <details open={!!heb}>
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {heb ? `🏠 ${heb.nom} — modifier` : "🏠 Ajouter un hébergement"}
+              {heb ? `${heb.nom} — modifier` : "Ajouter un hébergement"}
             </summary>
             <form
               onSubmit={(e) => {
