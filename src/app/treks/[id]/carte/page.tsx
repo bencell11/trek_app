@@ -390,7 +390,7 @@ export default function CartePage() {
         </p>
       )}
 
-      <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+      <div className="mt-3 space-y-2">
         {etapes.map((e) => (
           <EtapeAccordionItem
             key={e._id}
@@ -558,37 +558,33 @@ export default function CartePage() {
       )}
 
       {/* Panneau flottant gauche : itinéraire (panneau principal), rétractable
-          pour laisser voir la carte (surtout utile sur mobile) */}
+          pour laisser voir la carte (barre du bas sur mobile, boîte flottante
+          au clavier/souris sur desktop) */}
       {panneauReduit ? (
-        <div className="pointer-events-none absolute left-3 top-3 z-[1000]">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-3">
           <button
             type="button"
             onClick={() => setPanneauReduit(false)}
-            className="pointer-events-auto rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-lg"
+            className="pointer-events-auto flex w-full items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-lg sm:w-auto sm:rounded-full sm:border sm:px-4 sm:py-2"
           >
-            ☰ Mon itinéraire
+            <span>☰ Mon itinéraire</span>
+            <span className="text-xs font-normal text-slate-400">
+              {etapes.length} étape{etapes.length > 1 ? "s" : ""} · ▲
+            </span>
           </button>
         </div>
       ) : (
-        <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-3 sm:max-w-[calc(100vw-1.5rem)]">
           <div
-            className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
-            style={{
-              width: 380,
-              height: 560,
-              minWidth: 260,
-              minHeight: 150,
-              maxWidth: "80vw",
-              maxHeight: "88vh",
-            }}
+            className="pointer-events-auto max-h-[70vh] w-full resize-none overflow-auto rounded-t-2xl border border-slate-200 bg-white p-4 shadow-lg sm:h-[560px] sm:max-h-[88vh] sm:min-h-[150px] sm:min-w-[260px] sm:w-[380px] sm:max-w-[80vw] sm:resize sm:rounded-xl"
           >
             <button
               type="button"
               onClick={() => setPanneauReduit(true)}
-              className="float-right text-slate-400 hover:text-slate-700"
-              aria-label="Réduire"
+              className="float-right -mr-1 -mt-1 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Réduire pour voir la carte"
             >
-              −
+              ▾
             </button>
             {itineraire}
           </div>
@@ -667,18 +663,18 @@ function EtapeAccordionItem({
   });
 
   return (
-    <div>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left ${
-          expanded ? "bg-slate-900 text-white" : "hover:bg-slate-50 text-slate-800"
+        className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left ${
+          expanded ? "bg-slate-50" : "hover:bg-slate-50"
         }`}
       >
-        <span className="text-sm font-medium">
+        <span className="text-sm font-semibold text-slate-900">
           J{etape.ordre} — {etape.nom}
         </span>
-        <span className={`shrink-0 text-xs ${expanded ? "text-slate-300" : "text-slate-400"}`}>
+        <span className="shrink-0 text-xs text-slate-400">
           {etape.distanceKm ? `${etape.distanceKm}km` : ""}
           {participantsNoms.length > 0 ? ` · 👥${participantsNoms.length}` : ""}
           {nbManques > 0 ? ` · ⚠️${nbManques}` : ""}
@@ -687,8 +683,8 @@ function EtapeAccordionItem({
       </button>
 
       {expanded && (
-        <div className="divide-y divide-slate-100 px-2 text-sm">
-          <div className="flex flex-wrap gap-1.5 py-2.5">
+        <div className="space-y-3 border-t border-slate-100 px-3 pb-3 pt-3 text-sm">
+          <div className="flex flex-wrap gap-1.5">
             <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
               {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
             </span>
@@ -714,7 +710,7 @@ function EtapeAccordionItem({
             )}
           </div>
 
-          <div className="py-2.5">
+          <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 👥 Participants
@@ -733,33 +729,50 @@ function EtapeAccordionItem({
                 </button>
               )}
             </div>
-            <p className="mt-1 text-slate-700">
-              {participantsNoms.length > 0
-                ? participantsNoms.join(", ")
-                : "Personne d'inscrit pour l'instant"}
-            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {participantsNoms.length > 0 ? (
+                participantsNoms.map((nom) => (
+                  <span
+                    key={nom}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                  >
+                    {nom}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-slate-400">Personne d&apos;inscrit pour l&apos;instant</span>
+              )}
+            </div>
           </div>
 
-          <div className="py-2.5">
+          <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               🎒 Matériel
             </p>
             {materielEtape.length === 0 ? (
               <p className="mt-1 text-slate-400">Aucun matériel spécifique à cette étape.</p>
             ) : (
-              <ul className="mt-1 space-y-1">
+              <ul className="mt-1.5 space-y-1.5">
                 {materielEtape.map((item) => (
-                  <li key={item._id} className="flex items-baseline justify-between gap-2">
+                  <li
+                    key={item._id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5"
+                  >
                     <span className="text-slate-700">
-                      {item.nom}
+                      <span className="font-medium text-slate-800">{item.nom}</span>
                       {item.apports.length > 0 && (
-                        <span className="text-xs text-slate-400">
-                          {" "}
-                          ({item.apports.map((a) => a.participantNom).join(", ")})
+                        <span className="ml-1.5 text-xs text-slate-400">
+                          {item.apports.map((a) => a.participantNom).join(", ")}
                         </span>
                       )}
                     </span>
-                    <span className={item.manque > 0 ? "text-amber-700" : "text-emerald-700"}>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                        item.manque > 0
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      }`}
+                    >
                       {item.couvert}/{item.requis} {item.unite}
                     </span>
                   </li>
@@ -768,7 +781,7 @@ function EtapeAccordionItem({
             )}
           </div>
 
-          <details className="py-2.5" open={!!heb}>
+          <details open={!!heb}>
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
               {heb ? `🏠 ${heb.nom} — modifier` : "🏠 Ajouter un hébergement"}
             </summary>
@@ -845,11 +858,11 @@ function EtapeAccordionItem({
             </form>
           </details>
 
-          <div className="py-2.5">
+          <div>
             <CommentsThread etapeId={etape._id} />
           </div>
 
-          <div className="py-2.5">
+          <div>
             <button type="button" onClick={onDelete} className="text-xs text-red-500 hover:text-red-700">
               Supprimer l&apos;étape
             </button>
