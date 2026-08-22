@@ -79,7 +79,12 @@ type MaterielItemAvecManque = {
   quantiteRequise: number;
   capacitePersonnes?: number;
   etapeId?: Id<"etapes">;
-  apports: { _id: Id<"materielApports">; quantite: number; participantNom: string }[];
+  apports: {
+    _id: Id<"materielApports">;
+    quantite: number;
+    participantId: Id<"participants">;
+    participantNom: string;
+  }[];
   couvert: number;
   requis: number;
   manque: number;
@@ -189,21 +194,30 @@ export default function CartePage() {
     notes: p.notes,
   }));
 
-  const totalParticipants = participants.length;
-  const materielAvecManque: MaterielItemAvecManque[] = materielItems.map((item) => {
-    const participantsConcernes = item.etapeId
-      ? (presenceByEtape.get(item.etapeId)?.length ?? 0)
-      : totalParticipants;
-    const couverture = calculerCouverture(item, participantsConcernes);
-    return { ...item, ...couverture };
-  });
-  const manquesGlobal = materielAvecManque.filter((item) => item.manque > 0 && !item.etapeId);
+  // Les abris (tente...) n'ont pas d'étape fixe : ils concernent chacun des
+  // jours où au moins un de leurs apporteurs est présent, et leur couverture
+  // se recalcule par jour à partir des seuls apporteurs présents ce jour-là.
+  const tousParticipantsIds = new Set(participants.map((p) => p._id));
+
+  const manquesGlobal: MaterielItemAvecManque[] = materielItems
+    .filter((item) => !item.capacitePersonnes && !item.etapeId)
+    .map((item) => ({ ...item, ...calculerCouverture(item, tousParticipantsIds) }))
+    .filter((item) => item.manque > 0);
+
   const materielParEtape = new Map<string, MaterielItemAvecManque[]>();
-  for (const item of materielAvecManque) {
-    if (!item.etapeId) continue;
-    const list = materielParEtape.get(item.etapeId) ?? [];
-    list.push(item);
-    materielParEtape.set(item.etapeId, list);
+  for (const etape of etapes) {
+    const presentIds = presentIdsByEtape.get(etape._id) ?? new Set<string>();
+    const list: MaterielItemAvecManque[] = [];
+    for (const item of materielItems) {
+      if (item.capacitePersonnes) {
+        const concerne = item.apports.some((a) => presentIds.has(a.participantId));
+        if (!concerne) continue;
+        list.push({ ...item, ...calculerCouverture(item, presentIds) });
+      } else if (item.etapeId === etape._id) {
+        list.push({ ...item, ...calculerCouverture(item, tousParticipantsIds) });
+      }
+    }
+    materielParEtape.set(etape._id, list);
   }
 
   const totalDistance = etapes.reduce((s, e) => s + (e.distanceKm ?? 0), 0);

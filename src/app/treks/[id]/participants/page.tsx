@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { useCurrentUser } from "@/lib/current-user";
 
 export default function ParticipantsPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,182 +14,149 @@ export default function ParticipantsPage() {
   const participants = useQuery(api.participants.listByTrek, { trekId });
   const etapes = useQuery(api.etapes.listWithHebergement, { trekId });
   const presences = useQuery(api.presence.listByTrek, { trekId });
+  const materielItems = useQuery(api.materiel.listByTrek, { trekId });
 
-  const createParticipant = useMutation(api.participants.create);
   const deleteParticipant = useMutation(api.participants.remove);
-  const setForTrek = useMutation(api.presence.setForTrek);
+  const createParticipant = useMutation(api.participants.create);
+  const addPresence = useMutation(api.presence.add);
+  const removePresence = useMutation(api.presence.remove);
 
-  const [form, setForm] = useState({ nom: "", email: "", telephone: "" });
-  // Édits locaux pas encore enregistrés : clé -> coché/décoché.
-  // Tant qu'une case n'a pas été touchée, son état vient de `presences`.
-  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
+  const { nom: monNom } = useCurrentUser();
+  const estAdmin = monNom?.trim().toLowerCase() === "ben";
 
-  const presenceSet = new Set(
-    (presences ?? []).map((p) => `${p.etapeId}_${p.participantId}`)
-  );
+  const [nouveauNom, setNouveauNom] = useState("");
 
-  function isChecked(etapeId: string, participantId: string) {
-    const key = `${etapeId}_${participantId}`;
-    return overrides.has(key) ? overrides.get(key)! : presenceSet.has(key);
+  const joursByParticipant = new Map<string, Set<string>>();
+  for (const p of presences ?? []) {
+    const set = joursByParticipant.get(p.participantId) ?? new Set<string>();
+    set.add(p.etapeId);
+    joursByParticipant.set(p.participantId, set);
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.nom.trim()) return;
-    await createParticipant({
-      trekId,
-      nom: form.nom.trim(),
-      email: form.email.trim() || undefined,
-      telephone: form.telephone.trim() || undefined,
-    });
-    setForm({ nom: "", email: "", telephone: "" });
+  const materielByParticipant = new Map<
+    string,
+    { nom: string; quantite: number; capacitePersonnes?: number }[]
+  >();
+  for (const item of materielItems ?? []) {
+    for (const a of item.apports) {
+      const list = materielByParticipant.get(a.participantId) ?? [];
+      list.push({ nom: item.nom, quantite: a.quantite, capacitePersonnes: item.capacitePersonnes });
+      materielByParticipant.set(a.participantId, list);
+    }
   }
 
-  function toggle(etapeId: string, participantId: string) {
-    const key = `${etapeId}_${participantId}`;
-    setOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(key, !isChecked(etapeId, participantId));
-      return next;
-    });
-  }
-
-  async function savePresence() {
-    const allKeys = new Set([...presenceSet, ...overrides.keys()]);
-    const rows = Array.from(allKeys)
-      .filter((key) => (overrides.has(key) ? overrides.get(key)! : presenceSet.has(key)))
-      .map((key) => {
-        const [etapeId, participantId] = key.split("_");
-        return {
-          etapeId: etapeId as Id<"etapes">,
-          participantId: participantId as Id<"participants">,
-        };
-      });
-    await setForTrek({ trekId, presences: rows });
-    setOverrides(new Map());
+  async function toggleJour(participantId: string, etapeId: string) {
+    const present = joursByParticipant.get(participantId)?.has(etapeId) ?? false;
+    if (present) {
+      await removePresence({ etapeId: etapeId as Id<"etapes">, participantId: participantId as Id<"participants"> });
+    } else {
+      await addPresence({ etapeId: etapeId as Id<"etapes">, participantId: participantId as Id<"participants"> });
+    }
   }
 
   return (
     <div className="h-full overflow-y-auto px-4 py-8">
-    <div className="mx-auto max-w-3xl space-y-8">
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mx-auto max-w-3xl space-y-4">
         <h2 className="text-sm font-semibold text-slate-900">Participants</h2>
-        <ul className="mt-3 space-y-2">
-          {(participants ?? []).map((p) => (
-            <li
-              key={p._id}
-              className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-sm"
-            >
-              <div>
-                <span className="font-medium text-slate-900">{p.nom}</span>
-                {p.email && (
-                  <span className="ml-2 text-xs text-slate-400">
-                    {p.email}
-                  </span>
+
+        {(participants ?? []).map((p) => {
+          const peuxEditer = p.nom === monNom || estAdmin;
+          const jours = joursByParticipant.get(p._id) ?? new Set<string>();
+          const materiel = materielByParticipant.get(p._id) ?? [];
+
+          return (
+            <div key={p._id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-slate-900">{p.nom}</p>
+                {peuxEditer && (
+                  <button
+                    type="button"
+                    onClick={() => deleteParticipant({ participantId: p._id })}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Retirer
+                  </button>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => deleteParticipant({ participantId: p._id })}
-                className="text-xs text-red-500 hover:text-red-700"
-              >
-                Retirer
-              </button>
-            </li>
-          ))}
-          {participants && participants.length === 0 && (
-            <p className="text-sm text-slate-500">Aucun participant.</p>
-          )}
-        </ul>
 
-        <form onSubmit={handleCreate} className="mt-4 grid grid-cols-3 gap-3">
-          <input
-            value={form.nom}
-            onChange={(e) => setForm({ ...form, nom: e.target.value })}
-            required
-            placeholder="Nom"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="Email"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <input
-            value={form.telephone}
-            onChange={(e) => setForm({ ...form, telephone: e.target.value })}
-            placeholder="Téléphone"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="col-span-3 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
-          >
-            Ajouter le participant
-          </button>
-        </form>
-      </section>
+              <div className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Jours</p>
+                {!etapes || etapes.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-400">Aucune étape pour l&apos;instant.</p>
+                ) : (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {etapes.map((e) => {
+                      const present = jours.has(e._id);
+                      return (
+                        <button
+                          key={e._id}
+                          type="button"
+                          disabled={!peuxEditer}
+                          onClick={() => toggleJour(p._id, e._id)}
+                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                            present
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 text-slate-400"
+                          } ${peuxEditer ? "hover:opacity-80" : "cursor-default"}`}
+                        >
+                          J{e.ordre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">
-          Qui est là, quand ?
-        </h2>
-        {(!etapes || etapes.length === 0 || !participants || participants.length === 0) ? (
-          <p className="mt-3 text-sm text-slate-500">
-            Ajoute d&apos;abord des étapes et des participants.
-          </p>
-        ) : (
-          <div className="mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th className="p-2 text-left text-xs font-medium text-slate-500">
-                      Participant
-                    </th>
-                    {etapes.map((e) => (
-                      <th
-                        key={e._id}
-                        className="p-2 text-center text-xs font-medium text-slate-500"
-                      >
-                        J{e.ordre}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {participants.map((p) => (
-                    <tr key={p._id} className="border-t border-slate-100">
-                      <td className="p-2 font-medium text-slate-800">
-                        {p.nom}
-                      </td>
-                      {etapes.map((e) => (
-                        <td key={e._id} className="p-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isChecked(e._id, p._id)}
-                            onChange={() => toggle(e._id, p._id)}
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Matériel</p>
+                {materiel.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-400">Rien de déclaré.</p>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-700">
+                    {materiel
+                      .map(
+                        (m) =>
+                          `${m.nom} ×${m.quantite}${m.capacitePersonnes ? ` (${m.capacitePersonnes} pers./unité)` : ""}`
+                      )
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={savePresence}
-              className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-            >
-              Enregistrer la présence
-            </button>
-          </div>
+          );
+        })}
+
+        {participants && participants.length === 0 && (
+          <p className="text-sm text-slate-500">
+            Personne pour l&apos;instant — chacun est ajouté automatiquement en marquant sa présence sur une étape.
+          </p>
         )}
-      </section>
-    </div>
+
+        {estAdmin && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!nouveauNom.trim()) return;
+              await createParticipant({ trekId, nom: nouveauNom.trim() });
+              setNouveauNom("");
+            }}
+            className="flex gap-2 rounded-xl border border-dashed border-slate-300 bg-white p-3"
+          >
+            <input
+              value={nouveauNom}
+              onChange={(e) => setNouveauNom(e.target.value)}
+              placeholder="Ajouter quelqu'un (nom)"
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              Ajouter
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

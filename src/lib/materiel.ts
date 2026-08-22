@@ -1,7 +1,7 @@
 export type MaterielItemBase = {
   quantiteRequise: number;
   capacitePersonnes?: number;
-  apports: { quantite: number }[];
+  apports: { participantId: string; quantite: number }[];
 };
 
 export type Couverture = {
@@ -14,27 +14,29 @@ export type Couverture = {
 };
 
 /**
- * Pour un abri (tente...), le besoin n'est pas une quantité saisie à la
- * main : c'est le nombre de participants concernés (présents sur l'étape
- * si l'item y est lié, sinon tout le trek), et la couverture est la somme
- * des unités apportées multipliée par leur capacité en personnes.
+ * Pour un abri (tente...), le besoin correspond aux participants présents
+ * sur le périmètre donné (une étape précise, ou tout le trek), et la
+ * couverture ne compte que les apports des participants effectivement
+ * présents sur ce périmètre — un abri suit son propriétaire sur tous ses
+ * jours de présence, pas une étape unique.
  */
 export function calculerCouverture(
   item: MaterielItemBase,
-  participantsConcernes: number
+  participantsPresents: Set<string>
 ): Couverture {
-  const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
-
   if (item.capacitePersonnes && item.capacitePersonnes > 0) {
-    const couvert = apporte * item.capacitePersonnes;
+    const couvert = item.apports
+      .filter((a) => participantsPresents.has(a.participantId))
+      .reduce((sum, a) => sum + a.quantite * item.capacitePersonnes!, 0);
     return {
-      requis: participantsConcernes,
+      requis: participantsPresents.size,
       couvert,
-      manque: Math.max(0, participantsConcernes - couvert),
+      manque: Math.max(0, participantsPresents.size - couvert),
       unite: "places",
     };
   }
 
+  const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
   return {
     requis: item.quantiteRequise,
     couvert: apporte,
