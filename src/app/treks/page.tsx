@@ -1,50 +1,81 @@
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { createTrek, signOut } from "./actions";
+"use client";
 
-export default async function TreksPage() {
-  const supabase = await createClient();
-  const { data: treks } = await supabase
-    .from("treks")
-    .select("*")
-    .order("date_debut", { ascending: true, nullsFirst: false });
+import Link from "next/link";
+import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+import { useCurrentUser } from "@/lib/current-user";
+
+export default function TreksPage() {
+  const treks = useQuery(api.treks.list);
+  const createTrek = useMutation(api.treks.create);
+  const { nom, setNom } = useCurrentUser();
+
+  const [form, setForm] = useState({
+    nom: "",
+    sectionViaAlpina: "",
+    dateDebut: "",
+    dateFin: "",
+    description: "",
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nom.trim()) return;
+    await createTrek({
+      nom: form.nom.trim(),
+      sectionViaAlpina: form.sectionViaAlpina.trim() || undefined,
+      dateDebut: form.dateDebut || undefined,
+      dateFin: form.dateFin || undefined,
+      description: form.description.trim() || undefined,
+    });
+    setForm({
+      nom: "",
+      sectionViaAlpina: "",
+      dateDebut: "",
+      dateFin: "",
+      description: "",
+    });
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Mes treks</h1>
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="text-sm text-slate-500 hover:text-slate-800"
-          >
-            Se déconnecter
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={() => {
+            const next = window.prompt("Ton prénom ?", nom ?? "");
+            if (next?.trim()) setNom(next.trim());
+          }}
+          className="text-sm text-slate-500 hover:text-slate-800"
+        >
+          👋 {nom}
+        </button>
       </div>
 
       <ul className="mt-6 space-y-3">
         {(treks ?? []).map((trek) => (
-          <li key={trek.id}>
+          <li key={trek._id}>
             <Link
-              href={`/treks/${trek.id}`}
+              href={`/treks/${trek._id}`}
               className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300"
             >
               <p className="font-medium text-slate-900">{trek.nom}</p>
-              {trek.section_via_alpina && (
+              {trek.sectionViaAlpina && (
                 <p className="text-sm text-slate-500">
-                  {trek.section_via_alpina}
+                  {trek.sectionViaAlpina}
                 </p>
               )}
-              {(trek.date_debut || trek.date_fin) && (
+              {(trek.dateDebut || trek.dateFin) && (
                 <p className="mt-1 text-xs text-slate-400">
-                  {trek.date_debut ?? "?"} → {trek.date_fin ?? "?"}
+                  {trek.dateDebut ?? "?"} → {trek.dateFin ?? "?"}
                 </p>
               )}
             </Link>
           </li>
         ))}
-        {(!treks || treks.length === 0) && (
+        {treks && treks.length === 0 && (
           <p className="text-sm text-slate-500">
             Aucun trek pour l&apos;instant. Crée le premier ci-dessous.
           </p>
@@ -55,14 +86,15 @@ export default async function TreksPage() {
         <h2 className="text-sm font-semibold text-slate-900">
           Nouveau trek
         </h2>
-        <form action={createTrek} className="mt-4 space-y-3">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
           <div>
             <label className="block text-xs font-medium text-slate-600">
               Nom
             </label>
             <input
-              name="nom"
               required
+              value={form.nom}
+              onChange={(e) => setForm({ ...form, nom: e.target.value })}
               placeholder="Via Alpina – Tronçon 3"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />
@@ -72,7 +104,10 @@ export default async function TreksPage() {
               Section Via Alpina
             </label>
             <input
-              name="section_via_alpina"
+              value={form.sectionViaAlpina}
+              onChange={(e) =>
+                setForm({ ...form, sectionViaAlpina: e.target.value })
+              }
               placeholder="ex: Route rouge, étapes 12-16"
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />
@@ -84,7 +119,10 @@ export default async function TreksPage() {
               </label>
               <input
                 type="date"
-                name="date_debut"
+                value={form.dateDebut}
+                onChange={(e) =>
+                  setForm({ ...form, dateDebut: e.target.value })
+                }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -94,7 +132,10 @@ export default async function TreksPage() {
               </label>
               <input
                 type="date"
-                name="date_fin"
+                value={form.dateFin}
+                onChange={(e) =>
+                  setForm({ ...form, dateFin: e.target.value })
+                }
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -104,7 +145,10 @@ export default async function TreksPage() {
               Description
             </label>
             <textarea
-              name="description"
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
               rows={2}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />

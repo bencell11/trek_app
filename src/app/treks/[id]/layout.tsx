@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 
 const TABS = [
   { href: "", label: "Vue d'ensemble" },
@@ -9,22 +13,29 @@ const TABS = [
   { href: "/materiel", label: "Matériel" },
 ];
 
-export default async function TrekLayout({
+export default function TrekLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const { data: trek } = await supabase
-    .from("treks")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const { id } = useParams<{ id: string }>();
+  const trekId = id as Id<"treks">;
+  const trek = useQuery(api.treks.get, { trekId });
 
-  if (!trek) notFound();
+  if (trek === undefined) {
+    return <main className="mx-auto max-w-5xl px-4 py-10 text-sm text-slate-500">Chargement…</main>;
+  }
+
+  if (trek === null) {
+    return (
+      <main className="mx-auto max-w-5xl px-4 py-10">
+        <p className="text-sm text-slate-500">Trek introuvable.</p>
+        <Link href="/treks" className="text-sm text-slate-800 underline">
+          ← Mes treks
+        </Link>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
@@ -34,8 +45,8 @@ export default async function TrekLayout({
       <h1 className="mt-2 text-2xl font-semibold text-slate-900">
         {trek.nom}
       </h1>
-      {trek.section_via_alpina && (
-        <p className="text-sm text-slate-500">{trek.section_via_alpina}</p>
+      {trek.sectionViaAlpina && (
+        <p className="text-sm text-slate-500">{trek.sectionViaAlpina}</p>
       )}
 
       <nav className="mt-6 flex gap-1 border-b border-slate-200">

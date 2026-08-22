@@ -1,47 +1,35 @@
+"use client";
+
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import type { Etape, Hebergement, MaterielItem } from "@/types/database";
+import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 
-type EtapeApercu = Etape & {
-  hebergements: Hebergement[];
-  etape_participants: { participant_id: string; participants: { nom: string } | null }[];
-};
+export default function TrekOverviewPage() {
+  const { id } = useParams<{ id: string }>();
+  const trekId = id as Id<"treks">;
 
-type MaterielApercu = MaterielItem & {
-  materiel_apports: { quantite: number }[];
-};
+  const etapes = useQuery(api.etapes.listWithHebergement, { trekId });
+  const presences = useQuery(api.presence.listByTrek, { trekId });
+  const participants = useQuery(api.participants.listByTrek, { trekId });
+  const materielItems = useQuery(api.materiel.listByTrek, { trekId });
 
-export default async function TrekOverviewPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
+  const participantsById = new Map(
+    (participants ?? []).map((p) => [p._id, p.nom])
+  );
 
-  const [{ data: etapes }, { data: materielItems }] = await Promise.all([
-    supabase
-      .from("etapes")
-      .select(
-        "*, hebergements(*), etape_participants(participant_id, participants(nom))"
-      )
-      .eq("trek_id", id)
-      .order("ordre", { ascending: true })
-      .returns<EtapeApercu[]>(),
-    supabase
-      .from("materiel_items")
-      .select("*, materiel_apports(quantite)")
-      .eq("trek_id", id)
-      .returns<MaterielApercu[]>(),
-  ]);
+  const presenceByEtape = new Map<string, string[]>();
+  for (const p of presences ?? []) {
+    const list = presenceByEtape.get(p.etapeId) ?? [];
+    list.push(participantsById.get(p.participantId) ?? "?");
+    presenceByEtape.set(p.etapeId, list);
+  }
 
   const manques = (materielItems ?? [])
     .map((item) => {
-      const apporte = (item.materiel_apports ?? []).reduce(
-        (sum: number, a: { quantite: number }) => sum + a.quantite,
-        0
-      );
-      return { ...item, apporte, manque: item.quantite_requise - apporte };
+      const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
+      return { ...item, apporte, manque: item.quantiteRequise - apporte };
     })
     .filter((item) => item.manque > 0);
 
@@ -54,8 +42,8 @@ export default async function TrekOverviewPage({
           </h2>
           <ul className="mt-2 space-y-1 text-sm text-amber-800">
             {manques.map((item) => (
-              <li key={item.id}>
-                {item.nom} — {item.apporte}/{item.quantite_requise}
+              <li key={item._id}>
+                {item.nom} — {item.apporte}/{item.quantiteRequise}
               </li>
             ))}
           </ul>
@@ -79,7 +67,7 @@ export default async function TrekOverviewPage({
           </Link>
         </div>
 
-        {(!etapes || etapes.length === 0) && (
+        {etapes && etapes.length === 0 && (
           <p className="mt-3 text-sm text-slate-500">
             Aucune étape définie. Commence par ajouter le jour 1.
           </p>
@@ -87,11 +75,10 @@ export default async function TrekOverviewPage({
 
         <ol className="mt-4 space-y-3">
           {(etapes ?? []).map((etape) => {
-            const hebergement = etape.hebergements?.[0];
-            const participants = etape.etape_participants ?? [];
+            const noms = presenceByEtape.get(etape._id) ?? [];
             return (
               <li
-                key={etape.id}
+                key={etape._id}
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
               >
                 <div className="flex items-center justify-between">
@@ -105,18 +92,18 @@ export default async function TrekOverviewPage({
                   )}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
-                  {etape.point_depart ?? "?"} → {etape.point_arrivee ?? "?"}
-                  {etape.distance_km ? ` · ${etape.distance_km} km` : ""}
-                  {etape.denivele_positif ? ` · +${etape.denivele_positif}m` : ""}
+                  {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
+                  {etape.distanceKm ? ` · ${etape.distanceKm} km` : ""}
+                  {etape.denivelePositif ? ` · +${etape.denivelePositif}m` : ""}
                 </p>
-                {hebergement && (
+                {etape.hebergement && (
                   <p className="mt-1 text-sm text-slate-600">
-                    🏠 {hebergement.nom}{" "}
+                    🏠 {etape.hebergement.nom}{" "}
                     <span className="text-xs text-slate-400">
-                      ({hebergement.type} ·{" "}
-                      {hebergement.statut_reservation === "confirme"
+                      ({etape.hebergement.type} ·{" "}
+                      {etape.hebergement.statutReservation === "confirme"
                         ? "réservé"
-                        : hebergement.statut_reservation === "en_cours"
+                        : etape.hebergement.statutReservation === "en_cours"
                           ? "réservation en cours"
                           : "à réserver"}
                       )
@@ -124,11 +111,9 @@ export default async function TrekOverviewPage({
                   </p>
                 )}
                 <p className="mt-1 text-xs text-slate-400">
-                  {participants.length === 0
+                  {noms.length === 0
                     ? "Personne d'inscrit pour l'instant"
-                    : `👥 ${participants
-                        .map((p) => p.participants?.nom)
-                        .join(", ")}`}
+                    : `👥 ${noms.join(", ")}`}
                 </p>
               </li>
             );
