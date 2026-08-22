@@ -216,8 +216,8 @@ export default function CartePage() {
       )}
 
       {/* Colonne flottante gauche : résumé + itinéraire + points d'intérêt */}
-      <div className="pointer-events-none absolute inset-y-3 left-3 z-[1000] flex w-[340px] max-w-[calc(100vw-1.5rem)] flex-col gap-3">
-        <div className="pointer-events-auto shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+      <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex max-w-[calc(100vw-1.5rem)] flex-col gap-3">
+        <div className="pointer-events-auto w-[340px] max-w-[calc(100vw-1.5rem)] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
           <button
             type="button"
             onClick={() => setResumeOuvert((v) => !v)}
@@ -290,7 +290,17 @@ export default function CartePage() {
           )}
         </div>
 
-        <div className="pointer-events-auto flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+        <div
+          className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+          style={{
+            width: 340,
+            height: 420,
+            minWidth: 240,
+            minHeight: 120,
+            maxWidth: "80vw",
+            maxHeight: "85vh",
+          }}
+        >
           <h2 className="text-sm font-semibold text-slate-900">Mon itinéraire</h2>
           <ol className="mt-2 space-y-1">
             {etapes.map((e) => (
@@ -372,8 +382,18 @@ export default function CartePage() {
 
       {/* Panneau flottant droit : détail de la sélection */}
       {detailPanelOuvert && (
-        <div className="pointer-events-none absolute inset-y-3 right-3 z-[1000] w-[360px] max-w-[calc(100vw-1.5rem)]">
-          <div className="pointer-events-auto h-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+        <div className="pointer-events-none absolute right-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
+          <div
+            className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+            style={{
+              width: 360,
+              height: 480,
+              minWidth: 260,
+              minHeight: 120,
+              maxWidth: "80vw",
+              maxHeight: "85vh",
+            }}
+          >
             <button
               type="button"
               onClick={clearSelection}

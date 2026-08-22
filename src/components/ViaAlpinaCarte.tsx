@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { ReactNode, useEffect, useMemo } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -72,6 +72,57 @@ function emojiIcon(emoji: string, taille = 26) {
     className: "",
     iconSize: [0, 0],
   });
+}
+
+type FondDeCarte = "topo" | "satellite" | "epure";
+
+const FONDS_DE_CARTE: Record<
+  FondDeCarte,
+  { label: string; layer: string; format: string; attribution: string }
+> = {
+  topo: {
+    label: "Topo",
+    layer: "ch.swisstopo.pixelkarte-farbe",
+    format: "jpeg",
+    attribution: '&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+  },
+  satellite: {
+    label: "Satellite",
+    layer: "ch.swisstopo.swissimage",
+    format: "jpeg",
+    attribution: '&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+  },
+  epure: {
+    label: "Épuré",
+    layer: "ch.swisstopo.pixelkarte-grau",
+    format: "jpeg",
+    attribution: '&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>',
+  },
+};
+
+function SelecteurFondDeCarte({
+  fond,
+  onChange,
+}: {
+  fond: FondDeCarte;
+  onChange: (f: FondDeCarte) => void;
+}) {
+  return (
+    <div className="absolute bottom-9 right-3 z-[1000] flex overflow-hidden rounded-lg border border-slate-200 bg-white text-xs shadow-lg">
+      {(Object.keys(FONDS_DE_CARTE) as FondDeCarte[]).map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`px-2.5 py-1.5 font-medium ${
+            fond === key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          {FONDS_DE_CARTE[key].label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function FitBounds({ bounds }: { bounds: LatLngBoundsExpression | null }) {
@@ -211,6 +262,9 @@ export default function ViaAlpinaCarte({
     return catalog.flatMap((s) => asTuples(s.trace));
   })();
 
+  const [fond, setFond] = useState<FondDeCarte>("topo");
+  const configFond = FONDS_DE_CARTE[fond];
+
   return (
     <MapContainer
       center={[46.6, 8.5]}
@@ -220,9 +274,11 @@ export default function ViaAlpinaCarte({
       className={`h-full w-full ${placingPoint ? "cursor-crosshair" : ""}`}
     >
       <ZoomControl position="bottomleft" />
+      <SelecteurFondDeCarte fond={fond} onChange={setFond} />
       <TileLayer
-        attribution='&copy; <a href="https://www.swisstopo.admin.ch">swisstopo</a>'
-        url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg"
+        key={fond}
+        attribution={configFond.attribution}
+        url={`https://wmts.geo.admin.ch/1.0.0/${configFond.layer}/default/current/3857/{z}/{x}/{y}.${configFond.format}`}
         maxZoom={18}
       />
 
