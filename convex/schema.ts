@@ -89,4 +89,19 @@ export default defineSchema({
     auteur: v.string(),
     texte: v.string(),
   }).index("by_etape", ["etapeId"]),
+
+  pointsInteret: defineTable({
+    trekId: v.id("treks"),
+    nom: v.string(),
+    type: v.union(
+      v.literal("point_de_vue"),
+      v.literal("lac"),
+      v.literal("source"),
+      v.literal("sommet"),
+      v.literal("autre")
+    ),
+    lat: v.number(),
+    lng: v.number(),
+    notes: v.optional(v.string()),
+  }).index("by_trek", ["trekId"]),
 });

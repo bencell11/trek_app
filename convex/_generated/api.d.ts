@@ -13,6 +13,7 @@ import type * as etapes from "../etapes.js";
 import type * as hebergements from "../hebergements.js";
 import type * as materiel from "../materiel.js";
 import type * as participants from "../participants.js";
+import type * as pointsInteret from "../pointsInteret.js";
 import type * as presence from "../presence.js";
 import type * as treks from "../treks.js";
 
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   hebergements: typeof hebergements;
   materiel: typeof materiel;
   participants: typeof participants;
+  pointsInteret: typeof pointsInteret;
   presence: typeof presence;
   treks: typeof treks;
 }>;

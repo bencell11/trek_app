@@ -23,52 +23,52 @@ export default function TrekLayout({
   const trek = useQuery(api.treks.get, { trekId });
 
   if (trek === undefined) {
-    return <main className="mx-auto max-w-5xl px-4 py-10 text-sm text-slate-500">Chargement…</main>;
+    return (
+      <div className="flex h-screen items-center justify-center text-sm text-slate-500">
+        Chargement…
+      </div>
+    );
   }
 
   if (trek === null) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
+      <div className="flex h-screen flex-col items-center justify-center gap-2">
         <p className="text-sm text-slate-500">Trek introuvable.</p>
         <Link href="/treks" className="text-sm text-slate-800 underline">
           ← Mes treks
         </Link>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
-      <Link href="/treks" className="text-sm text-slate-500 hover:text-slate-800">
-        ← Mes treks
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold text-slate-900">
-        {trek.nom}
-      </h1>
-      {trek.sectionViaAlpina && (
-        <p className="text-sm text-slate-500">{trek.sectionViaAlpina}</p>
-      )}
+    <div className="flex h-screen flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-white px-4 py-2">
+        <Link href="/treks" className="text-sm text-slate-500 hover:text-slate-800">
+          ← Mes treks
+        </Link>
+        <h1 className="text-base font-semibold text-slate-900">{trek.nom}</h1>
+        <nav className="ml-auto flex gap-1">
+          {TABS.map((tab) => {
+            const active = pathname === `/treks/${id}${tab.href}`;
+            return (
+              <Link
+                key={tab.href}
+                href={`/treks/${id}${tab.href}`}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  active
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </header>
 
-      <nav className="mt-6 flex gap-1 border-b border-slate-200">
-        {TABS.map((tab) => {
-          const active = pathname === `/treks/${id}${tab.href}`;
-          return (
-            <Link
-              key={tab.href}
-              href={`/treks/${id}${tab.href}`}
-              className={`rounded-t-lg px-4 py-2 text-sm font-medium ${
-                active
-                  ? "border-b-2 border-slate-900 text-slate-900"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="mt-6">{children}</div>
-    </main>
+      <div className="min-h-0 flex-1">{children}</div>
+    </div>
   );
 }

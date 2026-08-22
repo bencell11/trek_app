@@ -42,7 +42,8 @@ export default function MaterielPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto px-4 py-8">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div className="space-y-4">
         {(items ?? []).map((item) => {
           const totalApporte = item.apports.reduce((s, a) => s + a.quantite, 0);
@@ -194,6 +195,7 @@ export default function MaterielPage() {
           </button>
         </form>
       </div>
+    </div>
     </div>
   );
 }

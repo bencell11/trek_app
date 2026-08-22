@@ -11,6 +11,7 @@ export default function TreksPage() {
   const router = useRouter();
   const treks = useQuery(api.treks.list);
   const createTrek = useMutation(api.treks.create);
+  const deleteTrek = useMutation(api.treks.remove);
   const { nom, setNom } = useCurrentUser();
 
   const [nomTrek, setNomTrek] = useState("");
@@ -53,7 +54,7 @@ export default function TreksPage() {
 
       <ul className="mt-6 space-y-3">
         {(treks ?? []).map((trek) => (
-          <li key={trek._id}>
+          <li key={trek._id} className="group relative">
             <Link
               href={`/treks/${trek._id}/carte`}
               className="block rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300"
@@ -70,6 +71,17 @@ export default function TreksPage() {
                 </p>
               )}
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Supprimer "${trek.nom}" et tout son contenu ?`)) {
+                  deleteTrek({ trekId: trek._id });
+                }
+              }}
+              className="absolute right-3 top-3 hidden text-xs text-slate-400 hover:text-red-600 group-hover:block"
+            >
+              Supprimer
+            </button>
           </li>
         ))}
         {treks && treks.length === 0 && (

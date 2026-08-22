@@ -69,7 +69,8 @@ export default function ParticipantsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="h-full overflow-y-auto px-4 py-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Participants</h2>
         <ul className="mt-3 space-y-2">
@@ -187,6 +188,7 @@ export default function ParticipantsPage() {
           </div>
         )}
       </section>
+    </div>
     </div>
   );
 }
