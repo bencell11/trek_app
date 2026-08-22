@@ -74,15 +74,12 @@ function NamePrompt({ onSubmit }: { onSubmit: (nom: string) => void }) {
         className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
       >
         <h1 className="text-xl font-semibold text-slate-900">Trek App</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Comment tu t&apos;appelles ? Ça sert juste à savoir qui a fait quoi.
-        </p>
         <input
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Ton prénom"
-          className="mt-6 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+          className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
         <button
           type="submit"

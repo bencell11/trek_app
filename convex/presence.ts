@@ -56,3 +56,27 @@ export const setForTrek = mutation({
     }
   },
 });
+
+export const add = mutation({
+  args: { etapeId: v.id("etapes"), participantId: v.id("participants") },
+  handler: async (ctx, { etapeId, participantId }) => {
+    const existing = await ctx.db
+      .query("etapeParticipants")
+      .withIndex("by_etape", (q) => q.eq("etapeId", etapeId))
+      .collect();
+    if (existing.some((r) => r.participantId === participantId)) return;
+    await ctx.db.insert("etapeParticipants", { etapeId, participantId });
+  },
+});
+
+export const remove = mutation({
+  args: { etapeId: v.id("etapes"), participantId: v.id("participants") },
+  handler: async (ctx, { etapeId, participantId }) => {
+    const existing = await ctx.db
+      .query("etapeParticipants")
+      .withIndex("by_etape", (q) => q.eq("etapeId", etapeId))
+      .collect();
+    const row = existing.find((r) => r.participantId === participantId);
+    if (row) await ctx.db.delete(row._id);
+  },
+});

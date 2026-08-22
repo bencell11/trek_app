@@ -24,6 +24,7 @@ import {
 } from "@/lib/via-alpina";
 import { calculerCouverture } from "@/lib/materiel";
 import CommentsThread from "@/components/CommentsThread";
+import { useCurrentUser } from "@/lib/current-user";
 
 const catalog = viaAlpina.stages as ViaAlpinaStage[];
 
@@ -101,6 +102,10 @@ export default function CartePage() {
   const upsertHebergement = useMutation(api.hebergements.upsert);
   const createPoint = useMutation(api.pointsInteret.create);
   const deletePoint = useMutation(api.pointsInteret.remove);
+  const createParticipant = useMutation(api.participants.create);
+  const addPresence = useMutation(api.presence.add);
+  const removePresence = useMutation(api.presence.remove);
+  const { nom: monNom } = useCurrentUser();
 
   const [selectedEtapeId, setSelectedEtapeId] = useState<string | null>(null);
   const [selectedStageRef, setSelectedStageRef] = useState<string | null>(null);
@@ -109,6 +114,7 @@ export default function CartePage() {
   const [placingPoint, setPlacingPoint] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
   const [pleinEcran, setPleinEcran] = useState(true);
+  const [panneauReduit, setPanneauReduit] = useState(false);
 
   if (!etapes || !presences || !participants || !materielItems || !points) {
     return (
@@ -120,10 +126,30 @@ export default function CartePage() {
 
   const participantsById = new Map(participants.map((p) => [p._id, p.nom]));
   const presenceByEtape = new Map<string, string[]>();
+  const presentIdsByEtape = new Map<string, Set<string>>();
   for (const p of presences) {
     const list = presenceByEtape.get(p.etapeId) ?? [];
     list.push(participantsById.get(p.participantId) ?? "?");
     presenceByEtape.set(p.etapeId, list);
+
+    const ids = presentIdsByEtape.get(p.etapeId) ?? new Set<string>();
+    ids.add(p.participantId);
+    presentIdsByEtape.set(p.etapeId, ids);
+  }
+
+  const monParticipant = monNom
+    ? participants.find((p) => p.nom.trim().toLowerCase() === monNom.trim().toLowerCase())
+    : undefined;
+
+  async function toggleMaPresence(etapeId: string) {
+    if (!monNom) return;
+    const participantId = monParticipant?._id ?? (await createParticipant({ trekId, nom: monNom }));
+    const dejaPresent = presentIdsByEtape.get(etapeId)?.has(participantId) ?? false;
+    if (dejaPresent) {
+      await removePresence({ etapeId: etapeId as Id<"etapes">, participantId });
+    } else {
+      await addPresence({ etapeId: etapeId as Id<"etapes">, participantId });
+    }
   }
 
   const etapesSurCarte: TrekEtapeSurCarte[] = etapes.map((e) => ({
@@ -359,6 +385,11 @@ export default function CartePage() {
             onToggle={() => selectEtape(e._id)}
             participantsNoms={presenceByEtape.get(e._id) ?? []}
             materielEtape={materielParEtape.get(e._id) ?? []}
+            jeParticipe={
+              !!monParticipant && (presentIdsByEtape.get(e._id)?.has(monParticipant._id) ?? false)
+            }
+            peuxParticiper={!!monNom}
+            onTogglePresence={() => toggleMaPresence(e._id)}
             onDelete={async () => {
               await deleteEtape({ etapeId: e._id });
               clearSelection();
@@ -512,22 +543,43 @@ export default function CartePage() {
         </div>
       )}
 
-      {/* Panneau flottant gauche : itinéraire (panneau principal) */}
-      <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
-        <div
-          className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
-          style={{
-            width: 380,
-            height: 560,
-            minWidth: 260,
-            minHeight: 150,
-            maxWidth: "80vw",
-            maxHeight: "88vh",
-          }}
-        >
-          {itineraire}
+      {/* Panneau flottant gauche : itinéraire (panneau principal), rétractable
+          pour laisser voir la carte (surtout utile sur mobile) */}
+      {panneauReduit ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-[1000]">
+          <button
+            type="button"
+            onClick={() => setPanneauReduit(false)}
+            className="pointer-events-auto rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-lg"
+          >
+            ☰ Mon itinéraire
+          </button>
         </div>
-      </div>
+      ) : (
+        <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-[calc(100vw-1.5rem)]">
+          <div
+            className="pointer-events-auto resize overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+            style={{
+              width: 380,
+              height: 560,
+              minWidth: 260,
+              minHeight: 150,
+              maxWidth: "80vw",
+              maxHeight: "88vh",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setPanneauReduit(true)}
+              className="float-right text-slate-400 hover:text-slate-700"
+              aria-label="Réduire"
+            >
+              −
+            </button>
+            {itineraire}
+          </div>
+        </div>
+      )}
 
       {/* Panneau flottant droit : étape officielle à importer / point d'intérêt */}
       {rightPanelOuvert && (
@@ -557,6 +609,9 @@ function EtapeAccordionItem({
   onToggle,
   participantsNoms,
   materielEtape,
+  jeParticipe,
+  peuxParticiper,
+  onTogglePresence,
   onDelete,
   onSaveHebergement,
 }: {
@@ -565,6 +620,9 @@ function EtapeAccordionItem({
   onToggle: () => void;
   participantsNoms: string[];
   materielEtape: MaterielItemAvecManque[];
+  jeParticipe: boolean;
+  peuxParticiper: boolean;
+  onTogglePresence: () => void;
   onDelete: () => void;
   onSaveHebergement: (data: {
     nom: string;
@@ -615,19 +673,52 @@ function EtapeAccordionItem({
       </button>
 
       {expanded && (
-        <div className="space-y-3 px-2 py-3 text-sm">
-          <p className="text-slate-500">
-            {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
-            {etape.distanceKm ? ` · ${etape.distanceKm} km` : ""}
-            {etape.denivelePositif ? ` · +${etape.denivelePositif}m` : ""}
-            {etape.deniveleNegatif ? ` / -${etape.deniveleNegatif}m` : ""}
-            {duree !== undefined ? ` · ~${formatDureeH(duree)}` : ""}
-          </p>
+        <div className="divide-y divide-slate-100 px-2 text-sm">
+          <div className="flex flex-wrap gap-1.5 py-2.5">
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+              {etape.pointDepart ?? "?"} → {etape.pointArrivee ?? "?"}
+            </span>
+            {etape.distanceKm !== undefined && (
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                📏 {etape.distanceKm} km
+              </span>
+            )}
+            {etape.denivelePositif !== undefined && (
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                ↗ +{etape.denivelePositif}m
+              </span>
+            )}
+            {etape.deniveleNegatif !== undefined && (
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                ↘ -{etape.deniveleNegatif}m
+              </span>
+            )}
+            {duree !== undefined && (
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                ⏱ ~{formatDureeH(duree)}
+              </span>
+            )}
+          </div>
 
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Participants
-            </p>
+          <div className="py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                👥 Participants
+              </p>
+              {peuxParticiper && (
+                <button
+                  type="button"
+                  onClick={onTogglePresence}
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                    jeParticipe
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  {jeParticipe ? "✓ Je viens" : "+ Je participe"}
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-slate-700">
               {participantsNoms.length > 0
                 ? participantsNoms.join(", ")
@@ -635,9 +726,9 @@ function EtapeAccordionItem({
             </p>
           </div>
 
-          <div>
+          <div className="py-2.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Matériel
+              🎒 Matériel
             </p>
             {materielEtape.length === 0 ? (
               <p className="mt-1 text-slate-400">Aucun matériel spécifique à cette étape.</p>
@@ -663,9 +754,9 @@ function EtapeAccordionItem({
             )}
           </div>
 
-          <details open={!!heb}>
-            <summary className="cursor-pointer text-slate-600">
-              {heb ? `🏠 ${heb.nom} — modifier` : "Ajouter un hébergement"}
+          <details className="py-2.5" open={!!heb}>
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {heb ? `🏠 ${heb.nom} — modifier` : "🏠 Ajouter un hébergement"}
             </summary>
             <form
               onSubmit={(e) => {
@@ -740,11 +831,15 @@ function EtapeAccordionItem({
             </form>
           </details>
 
-          <CommentsThread etapeId={etape._id} />
+          <div className="py-2.5">
+            <CommentsThread etapeId={etape._id} />
+          </div>
 
-          <button type="button" onClick={onDelete} className="text-xs text-red-500 hover:text-red-700">
-            Supprimer l&apos;étape
-          </button>
+          <div className="py-2.5">
+            <button type="button" onClick={onDelete} className="text-xs text-red-500 hover:text-red-700">
+              Supprimer l&apos;étape
+            </button>
+          </div>
         </div>
       )}
     </div>
