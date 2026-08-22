@@ -37,7 +37,7 @@ export const create = mutation({
     pointDepartLng: v.optional(v.number()),
     pointArriveeLat: v.optional(v.number()),
     pointArriveeLng: v.optional(v.number()),
-    trace: v.optional(v.array(v.array(v.number()))),
+    trace: v.optional(v.array(v.array(v.array(v.number())))),
     viaAlpinaRef: v.optional(v.string()),
   },
   handler: async (ctx, args) => {

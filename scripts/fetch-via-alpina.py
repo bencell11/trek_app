@@ -228,7 +228,6 @@ def main():
         )
         total_len = sum(len(r) for r in runs)
         runs_dec = [decimate(r, max(2, round(120 * len(r) / total_len))) for r in runs]
-        line_dec = [p for r in runs_dec for p in r]
 
         profile_cache = f"{CACHE_DIR}/{rid}_profile.json"
         if os.path.exists(profile_cache):
@@ -253,10 +252,18 @@ def main():
             "distanceKm": round(dist_m / 1000, 1),
             "denivelePositif": gain,
             "deniveleNegatif": loss,
-            "trace": [[round(p[0], 5), round(p[1], 5)] for p in line_dec],
+            # A list of separate line segments, not one flat line: when a
+            # stage's OSM ways don't form a single connected chain, we do
+            # NOT bridge the gap with a straight segment (that drew a fake
+            # "as the crow flies" line on the map). Render each segment as
+            # its own polyline instead.
+            "trace": [
+                [[round(p[0], 5), round(p[1], 5)] for p in run] for run in runs_dec
+            ],
         })
+        total_pts = sum(len(r) for r in runs_dec)
         print(f"  -> stage {ref}: {rel['tags'].get('from')} -> {rel['tags'].get('to')}, "
-              f"{round(dist_m / 1000, 1)}km, +{gain}m/-{loss}m, {len(line_dec)} pts")
+              f"{round(dist_m / 1000, 1)}km, +{gain}m/-{loss}m, {len(runs_dec)} segment(s), {total_pts} pts")
 
     stages.sort(key=lambda s: int(s["ref"]))
     out = {

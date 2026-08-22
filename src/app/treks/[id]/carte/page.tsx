@@ -70,12 +70,23 @@ export default function CartePage() {
     participantsNoms: presenceByEtape.get(e._id) ?? [],
   }));
 
-  const manques = (materielItems ?? [])
-    .map((item) => {
-      const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
-      return { ...item, apporte, manque: item.quantiteRequise - apporte };
-    })
-    .filter((item) => item.manque > 0);
+  const materielAvecManque = (materielItems ?? []).map((item) => {
+    const apporte = item.apports.reduce((sum, a) => sum + a.quantite, 0);
+    return { ...item, apporte, manque: item.quantiteRequise - apporte };
+  });
+  const manquesGlobal = materielAvecManque.filter(
+    (item) => item.manque > 0 && !item.etapeId
+  );
+  const manquesParEtape = new Map<string, number>();
+  for (const item of materielAvecManque) {
+    if (item.etapeId && item.manque > 0) {
+      manquesParEtape.set(item.etapeId, (manquesParEtape.get(item.etapeId) ?? 0) + 1);
+    }
+  }
+
+  const totalDistance = etapes.reduce((s, e) => s + (e.distanceKm ?? 0), 0);
+  const totalDPlus = etapes.reduce((s, e) => s + (e.denivelePositif ?? 0), 0);
+  const totalDMoins = etapes.reduce((s, e) => s + (e.deniveleNegatif ?? 0), 0);
 
   const importedRefs = new Set(etapesSurCarte.map((e) => e.viaAlpinaRef).filter(Boolean));
   const selectedEtape = etapes.find((e) => e._id === selectedEtapeId);
@@ -91,8 +102,9 @@ export default function CartePage() {
   }
 
   async function importerEtape(stage: ViaAlpinaStage) {
-    const depart = stage.trace[0];
-    const arrivee = stage.trace[stage.trace.length - 1];
+    const depart = stage.trace[0][0];
+    const dernierSegment = stage.trace[stage.trace.length - 1];
+    const arrivee = dernierSegment[dernierSegment.length - 1];
     const newId = await createEtape({
       trekId,
       nom: stage.nom,
@@ -114,20 +126,71 @@ export default function CartePage() {
 
   return (
     <div className="space-y-4">
-      {manques.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-          <span className="font-semibold text-amber-900">
-            ⚠️ Matériel manquant ({manques.length})
-          </span>{" "}
-          <span className="text-amber-800">
-            {manques.map((item) => item.nom).join(", ")}
-          </span>{" "}
-          <Link
-            href={`/treks/${id}/materiel`}
-            className="font-medium text-amber-900 underline"
-          >
-            Voir →
-          </Link>
+      {etapes.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">Résumé</h2>
+            <p className="text-sm text-slate-600">
+              {etapes.length} étape{etapes.length > 1 ? "s" : ""} ·{" "}
+              {Math.round(totalDistance * 10) / 10} km · +{totalDPlus}m / -
+              {totalDMoins}m · {participants.length} participant
+              {participants.length > 1 ? "s" : ""}
+            </p>
+          </div>
+
+          {manquesGlobal.length > 0 && (
+            <p className="mt-2 text-sm text-amber-800">
+              ⚠️ Matériel manquant (tout le trek) :{" "}
+              {manquesGlobal.map((item) => item.nom).join(", ")}{" "}
+              <Link href={`/treks/${id}/materiel`} className="font-medium underline">
+                Voir →
+              </Link>
+            </p>
+          )}
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="pb-1 pr-3 font-medium">Étape</th>
+                  <th className="pb-1 pr-3 font-medium">Distance</th>
+                  <th className="pb-1 pr-3 font-medium">👥</th>
+                  <th className="pb-1 font-medium">Matériel</th>
+                </tr>
+              </thead>
+              <tbody>
+                {etapes.map((e) => {
+                  const nbManques = manquesParEtape.get(e._id) ?? 0;
+                  const noms = presenceByEtape.get(e._id) ?? [];
+                  return (
+                    <tr
+                      key={e._id}
+                      onClick={() => selectEtape(e._id)}
+                      className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    >
+                      <td className="py-1.5 pr-3 text-slate-800">
+                        J{e.ordre} — {e.nom}
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-500">
+                        {e.distanceKm ? `${e.distanceKm} km` : "?"}
+                        {e.denivelePositif ? ` · +${e.denivelePositif}m` : ""}
+                      </td>
+                      <td className="py-1.5 pr-3 text-slate-500">
+                        {noms.length > 0 ? noms.length : "—"}
+                      </td>
+                      <td className="py-1.5">
+                        {nbManques > 0 ? (
+                          <span className="text-amber-700">⚠️ {nbManques} manquant{nbManques > 1 ? "s" : ""}</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       <ViaAlpinaCarte

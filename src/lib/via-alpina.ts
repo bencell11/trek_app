@@ -6,7 +6,10 @@ export type ViaAlpinaStage = {
   distanceKm: number;
   denivelePositif: number;
   deniveleNegatif: number;
-  trace: number[][];
+  // Un tableau de segments (pas une seule ligne) : quand le tracé OSM de
+  // l'étape n'est pas continu, on évite de relier les morceaux par un faux
+  // trait "à vol d'oiseau".
+  trace: number[][][];
 };
 
 // Estimation de la durée de marche à partir de la distance et du dénivelé,
