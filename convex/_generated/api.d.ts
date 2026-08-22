@@ -9,6 +9,7 @@
  */
 
 import type * as comments from "../comments.js";
+import type * as elevation from "../elevation.js";
 import type * as etapes from "../etapes.js";
 import type * as hebergements from "../hebergements.js";
 import type * as materiel from "../materiel.js";
@@ -25,6 +26,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   comments: typeof comments;
+  elevation: typeof elevation;
   etapes: typeof etapes;
   hebergements: typeof hebergements;
   materiel: typeof materiel;

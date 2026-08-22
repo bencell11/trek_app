@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type {
@@ -14,7 +14,14 @@ import type {
   TrekEtapeSurCarte,
 } from "@/components/ViaAlpinaCarte";
 import viaAlpina from "@/data/via-alpina-ch.json";
-import { estimerDureeH, formatDureeH, type ViaAlpinaStage } from "@/lib/via-alpina";
+import {
+  decimateTrace,
+  distanceTrace,
+  estimerDureeH,
+  formatDureeH,
+  splitTraceAtDistance,
+  type ViaAlpinaStage,
+} from "@/lib/via-alpina";
 import { calculerCouverture } from "@/lib/materiel";
 import CommentsThread from "@/components/CommentsThread";
 
@@ -90,6 +97,7 @@ export default function CartePage() {
 
   const createEtape = useMutation(api.etapes.create);
   const deleteEtape = useMutation(api.etapes.remove);
+  const calculerProfil = useAction(api.elevation.profil);
   const upsertHebergement = useMutation(api.hebergements.upsert);
   const createPoint = useMutation(api.pointsInteret.create);
   const deletePoint = useMutation(api.pointsInteret.remove);
@@ -201,27 +209,96 @@ export default function CartePage() {
     setSelectedPointId(pointId);
   }
 
-  async function importerEtape(stage: ViaAlpinaStage) {
-    const depart = stage.trace[0][0];
-    const dernierSegment = stage.trace[stage.trace.length - 1];
+  async function creerEtapeDepuisTrace(args: {
+    nom: string;
+    pointDepart: string;
+    pointArrivee: string;
+    distanceKm: number;
+    denivelePositif: number;
+    deniveleNegatif: number;
+    trace: number[][][];
+    viaAlpinaRef: string;
+  }) {
+    const depart = args.trace[0][0];
+    const dernierSegment = args.trace[args.trace.length - 1];
     const arrivee = dernierSegment[dernierSegment.length - 1];
-    const newId = await createEtape({
+    return await createEtape({
       trekId,
+      nom: args.nom,
+      pointDepart: args.pointDepart,
+      pointArrivee: args.pointArrivee,
+      distanceKm: Math.round(args.distanceKm * 10) / 10,
+      denivelePositif: args.denivelePositif,
+      deniveleNegatif: args.deniveleNegatif,
+      pointDepartLat: depart[0],
+      pointDepartLng: depart[1],
+      pointArriveeLat: arrivee[0],
+      pointArriveeLng: arrivee[1],
+      trace: args.trace,
+      viaAlpinaRef: args.viaAlpinaRef,
+    });
+  }
+
+  async function importerEtape(stage: ViaAlpinaStage) {
+    const newId = await creerEtapeDepuisTrace({
       nom: stage.nom,
       pointDepart: stage.depart,
       pointArrivee: stage.arrivee,
       distanceKm: stage.distanceKm,
       denivelePositif: stage.denivelePositif,
       deniveleNegatif: stage.deniveleNegatif,
-      pointDepartLat: depart[0],
-      pointDepartLng: depart[1],
-      pointArriveeLat: arrivee[0],
-      pointArriveeLng: arrivee[1],
       trace: stage.trace,
       viaAlpinaRef: stage.ref,
     });
     clearSelection();
     setSelectedEtapeId(newId);
+  }
+
+  async function importerEtapeDivisee(stage: ViaAlpinaStage, fraction: number) {
+    // Le tracé stocké est décimé (simplifié pour l'affichage) donc plus
+    // court que la vraie distance : on l'utilise seulement pour trouver le
+    // point de coupure au bon endroit, pas pour la distance affichée —
+    // celle-ci vient de stage.distanceKm (la distance officielle), répartie
+    // selon la même fraction, pour que J1 + J2 retombe exactement sur le
+    // total d'origine.
+    const totalTraceKm = distanceTrace(stage.trace);
+    const { traceA, traceB } = splitTraceAtDistance(stage.trace, totalTraceKm * fraction);
+    if (traceB.length === 0) return; // coupure hors du tracé, ne devrait pas arriver
+
+    const distA = Math.round(stage.distanceKm * fraction * 10) / 10;
+    const distB = Math.round(stage.distanceKm * (1 - fraction) * 10) / 10;
+    const pointsA = traceA.flat();
+    const pointsB = traceB.flat();
+    const pointCoupure = traceA[traceA.length - 1].at(-1) as number[];
+
+    const [profilA, profilB] = await Promise.all([
+      calculerProfil({ points: decimateTrace(pointsA, 100) }),
+      calculerProfil({ points: decimateTrace(pointsB, 100) }),
+    ]);
+
+    const nomCoupure = `${pointCoupure[0].toFixed(4)}, ${pointCoupure[1].toFixed(4)}`;
+    const idA = await creerEtapeDepuisTrace({
+      nom: `${stage.depart} → bivouac`,
+      pointDepart: stage.depart,
+      pointArrivee: nomCoupure,
+      distanceKm: distA,
+      denivelePositif: profilA.gain,
+      deniveleNegatif: profilA.loss,
+      trace: traceA,
+      viaAlpinaRef: stage.ref,
+    });
+    await creerEtapeDepuisTrace({
+      nom: `bivouac → ${stage.arrivee}`,
+      pointDepart: nomCoupure,
+      pointArrivee: stage.arrivee,
+      distanceKm: distB,
+      denivelePositif: profilB.gain,
+      deniveleNegatif: profilB.loss,
+      trace: traceB,
+      viaAlpinaRef: stage.ref,
+    });
+    clearSelection();
+    setSelectedEtapeId(idA);
   }
 
   const rightPanelOuvert = !!(selectedStage || selectedPoint || pendingPoint);
@@ -366,6 +443,7 @@ export default function CartePage() {
           stage={selectedStage}
           dejaImportee={importedRefs.has(selectedStage.ref)}
           onImport={() => importerEtape(selectedStage)}
+          onImportDivise={(fraction) => importerEtapeDivisee(selectedStage, fraction)}
         />
       )}
 
@@ -677,12 +755,21 @@ function StageDetailPanel({
   stage,
   dejaImportee,
   onImport,
+  onImportDivise,
 }: {
   stage: ViaAlpinaStage;
   dejaImportee: boolean;
   onImport: () => void;
+  onImportDivise: (fraction: number) => Promise<void>;
 }) {
   const duree = estimerDureeH(stage.distanceKm, stage.denivelePositif, stage.deniveleNegatif);
+  const [diviser, setDiviser] = useState(false);
+  const [fraction, setFraction] = useState(0.5);
+  const [enCours, setEnCours] = useState(false);
+
+  const distA = Math.round(stage.distanceKm * fraction * 10) / 10;
+  const distB = Math.round(stage.distanceKm * (1 - fraction) * 10) / 10;
+
   return (
     <div>
       <p className="font-medium text-slate-900">
@@ -692,18 +779,58 @@ function StageDetailPanel({
         {stage.distanceKm} km · +{stage.denivelePositif}m / -{stage.deniveleNegatif}m · ~
         {formatDureeH(duree)} (estimé)
       </p>
+
       {dejaImportee ? (
-        <p className="mt-4 text-sm text-emerald-700">
-          ✓ Déjà dans ton itinéraire.
-        </p>
+        <p className="mt-4 text-sm text-emerald-700">✓ Déjà dans ton itinéraire.</p>
       ) : (
-        <button
-          type="button"
-          onClick={onImport}
-          className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-        >
-          Ajouter cette étape à mon itinéraire
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onImport}
+            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            Ajouter cette étape à mon itinéraire
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDiviser((v) => !v)}
+            className="mt-2 block text-sm text-slate-500 underline hover:text-slate-800"
+          >
+            {diviser ? "Annuler la division" : "Trop long ? Diviser en 2 jours avec bivouac"}
+          </button>
+
+          {diviser && (
+            <div className="mt-3 rounded-lg bg-slate-50 p-3">
+              <input
+                type="range"
+                min={10}
+                max={90}
+                value={Math.round(fraction * 100)}
+                onChange={(e) => setFraction(Number(e.target.value) / 100)}
+                className="w-full"
+              />
+              <p className="mt-2 text-xs text-slate-600">
+                Jour 1 : {distA} km — bivouac — Jour 2 : {distB} km
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Le dénivelé de chaque moitié est recalculé depuis le relief réel.
+              </p>
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={async () => {
+                  setEnCours(true);
+                  await onImportDivise(fraction);
+                  setEnCours(false);
+                }}
+                className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {enCours ? "Calcul du dénivelé…" : "Diviser et ajouter les 2 étapes"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
