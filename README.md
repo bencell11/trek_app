@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trek App
 
-## Getting Started
+Application pour organiser un trek (Via Alpina) entre potes : itinéraire,
+étapes, hébergements (refuges/bivouacs), participants et matériel — pour voir
+d'un coup d'œil qui sera là, quand, où, et ce qu'il manque comme matériel.
 
-First, run the development server:
+## Stack
+
+- [Next.js 16](https://nextjs.org) (App Router) + TypeScript + TailwindCSS
+- [Supabase](https://supabase.com) (Postgres + Auth) via `@supabase/ssr`
+- Déploiement : [Vercel](https://vercel.com)
+
+## Mise en route
+
+### 1. Créer le projet Supabase
+
+1. Crée un projet sur [supabase.com](https://supabase.com).
+2. Dans le SQL Editor du projet, exécute le contenu de
+   [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql).
+3. Dans **Authentication → Providers**, l'auth par email (magic link / OTP)
+   est activée par défaut — c'est celle utilisée par l'app.
+4. Récupère l'URL du projet et la clé `anon` dans **Project Settings → API**.
+
+### 2. Configurer les variables d'environnement
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Renseigne `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Lancer le projet
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Ouvre [http://localhost:3000](http://localhost:3000) — tu seras redirigé vers
+`/login` pour te connecter par email (lien magique).
 
-To learn more about Next.js, take a look at the following resources:
+## Modèle de données
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **treks** — un trek (nom, section de la Via Alpina, dates)
+- **etapes** — les jours du trek (distance, D+/D-, dates)
+- **hebergements** — refuge / bivouac / hôtel par étape, statut de réservation
+- **participants** — les potes qui participent au trek
+- **etape_participants** — qui est présent à quelle étape
+- **materiel_items** — matériel requis, global au trek ou par étape
+- **materiel_apports** — qui apporte quoi, et en quelle quantité
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+La vue "Matériel" calcule automatiquement, pour chaque item, s'il est
+couvert, manquant ou en double en comparant la quantité requise à la somme
+des apports des participants.
 
-## Deploy on Vercel
+## Déploiement sur Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Connecte le repo GitHub à un nouveau projet Vercel.
+2. Renseigne les mêmes variables d'environnement
+   (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) dans les
+   settings du projet Vercel.
+3. Deploy.
