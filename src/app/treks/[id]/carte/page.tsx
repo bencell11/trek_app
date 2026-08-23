@@ -352,6 +352,10 @@ export default function CartePage() {
   );
 
   const importedRefs = new Set(etapesSurCarte.map((e) => e.viaAlpinaRef).filter(Boolean));
+  // Le catalogue Via Alpina n'a rien à faire sur la carte d'un trek qui n'a
+  // rien à voir avec ce tracé — on ne le montre que si le trek a déjà une
+  // étape importée depuis lui, ou n'a encore aucune étape (trek à démarrer).
+  const catalogPertinent = etapes.length === 0 || importedRefs.size > 0 ? catalog : [];
   const selectedStage = catalog.find((s) => s.ref === selectedStageRef);
   const selectedPoint = points.find((p) => p._id === selectedPointId);
 
@@ -474,7 +478,7 @@ export default function CartePage() {
 
   const carte = (
     <ViaAlpinaCarte
-      catalog={catalog}
+      catalog={catalogPertinent}
       etapes={etapesSurCarte}
       hebergements={hebergementsSurCarte}
       pointsInteret={pointsSurCarte}

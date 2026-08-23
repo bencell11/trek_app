@@ -267,12 +267,18 @@ export default function ViaAlpinaCarte({
   const bounds: LatLngBoundsExpression | null = (() => {
     const asTuples = (segments: number[][][]) =>
       segments.flatMap((seg) => seg.map((p) => [p[0], p[1]] as [number, number]));
-    if (selectedEtape?.trace) return asTuples(selectedEtape.trace);
-    if (selectedStage) return asTuples(selectedStage.trace);
-    if (etapesAvecTrace.length > 0) {
-      return etapesAvecTrace.flatMap((e) => asTuples(e.trace as number[][][]));
-    }
-    return catalog.flatMap((s) => asTuples(s.trace));
+    const result = (() => {
+      if (selectedEtape?.trace) return asTuples(selectedEtape.trace);
+      if (selectedStage) return asTuples(selectedStage.trace);
+      if (etapesAvecTrace.length > 0) {
+        return etapesAvecTrace.flatMap((e) => asTuples(e.trace as number[][][]));
+      }
+      return catalog.flatMap((s) => asTuples(s.trace));
+    })();
+    // Un trek sans aucune géométrie (étapes manuelles, catalogue masqué) n'a
+    // rien à cadrer — Leaflet refuse un fitBounds vide, donc on garde le
+    // centrage par défaut plutôt que de planter.
+    return result.length > 0 ? result : null;
   })();
 
   const [fond, setFond] = useState<FondDeCarte>("topo");
