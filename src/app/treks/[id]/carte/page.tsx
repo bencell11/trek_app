@@ -120,7 +120,6 @@ export default function CartePage() {
   const createParticipant = useMutation(api.participants.create);
   const addPresence = useMutation(api.presence.add);
   const removePresence = useMutation(api.presence.remove);
-  const calculerEcart = useAction(api.ecarts.calculer);
   const setEcartArrivee = useMutation(api.etapes.setEcartArrivee);
   const removeEcartArrivee = useMutation(api.etapes.removeEcartArrivee);
   const setEcartPoi = useMutation(api.pointsInteret.setEcart);
@@ -132,6 +131,7 @@ export default function CartePage() {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [clicEnAttente, setClicEnAttente] = useState<ClicEnAttente | null>(null);
+  const [tracePointsEcart, setTracePointsEcart] = useState<number[][]>([]);
   const [calculEcartEnCours, setCalculEcartEnCours] = useState(false);
   const [erreurEcart, setErreurEcart] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
@@ -174,74 +174,104 @@ export default function CartePage() {
     }
   }
 
-  const handleMapClick = async (lat: number, lng: number) => {
+  // ORS étant indisponible pour l'instant (compte bloqué côté fournisseur),
+  // l'écart se trace point par point à la main en suivant le sentier visible
+  // sur le fond topo, et son dénivelé vient du même calcul swisstopo que la
+  // division d'étape (précis, juste sans routage automatique).
+  const handleMapClick = (lat: number, lng: number) => {
     if (!clicEnAttente) return;
-    const demande = clicEnAttente;
-    setClicEnAttente(null);
-
-    if (demande.type === "poi") {
+    if (clicEnAttente.type === "poi") {
       clearSelection();
       setPendingPoint({ lat, lng });
       return;
     }
+    setTracePointsEcart((prev) => [...prev, [lat, lng]]);
+  };
+
+  const annulerEcart = () => {
+    setClicEnAttente(null);
+    setTracePointsEcart([]);
+    setErreurEcart(null);
+  };
+
+  const finirEcart = async () => {
+    if (!clicEnAttente || clicEnAttente.type === "poi" || tracePointsEcart.length === 0) return;
+    const demande = clicEnAttente;
 
     if (demande.type === "ecart-etape") {
       const etape = etapes.find((e) => e._id === demande.etapeId);
       if (!etape || etape.pointArriveeLat === undefined || etape.pointArriveeLng === undefined) {
         setErreurEcart("Cette étape n'a pas de point d'arrivée connu (importe-la depuis le tracé officiel d'abord).");
+        annulerEcart();
         return;
       }
+      const pointsTrace = [[etape.pointArriveeLat, etape.pointArriveeLng], ...tracePointsEcart];
       setErreurEcart(null);
       setCalculEcartEnCours(true);
       try {
-        const res = await calculerEcart({
-          departLat: etape.pointArriveeLat,
-          departLng: etape.pointArriveeLng,
-          arriveeLat: lat,
-          arriveeLng: lng,
-        });
+        const profil = await calculerProfil({ points: decimateTrace(pointsTrace, 100) });
+        const dernier = tracePointsEcart[tracePointsEcart.length - 1];
         await setEcartArrivee({
           etapeId: etape._id,
-          trace: res.trace,
-          distanceKm: res.distanceKm,
-          denivelePositif: res.denivelePositif,
-          deniveleNegatif: res.deniveleNegatif,
-          lat,
-          lng,
+          trace: pointsTrace,
+          distanceKm: Math.round(distanceTrace([pointsTrace]) * 10) / 10,
+          denivelePositif: profil.gain,
+          deniveleNegatif: profil.loss,
+          lat: dernier[0],
+          lng: dernier[1],
         });
       } catch (err) {
         setErreurEcart(err instanceof Error ? err.message : "Erreur de calcul de l'écart.");
       } finally {
         setCalculEcartEnCours(false);
+        setClicEnAttente(null);
+        setTracePointsEcart([]);
       }
       return;
     }
 
-    // ecart-poi
+    // ecart-poi : le tracé se termine sur le point d'intérêt lui-même.
     const point = points.find((p) => p._id === demande.pointId);
-    if (!point) return;
+    if (!point) {
+      annulerEcart();
+      return;
+    }
+    const pointsTrace = [...tracePointsEcart, [point.lat, point.lng]];
     setErreurEcart(null);
     setCalculEcartEnCours(true);
     try {
-      const res = await calculerEcart({
-        departLat: lat,
-        departLng: lng,
-        arriveeLat: point.lat,
-        arriveeLng: point.lng,
-      });
+      const profil = await calculerProfil({ points: decimateTrace(pointsTrace, 100) });
       await setEcartPoi({
         pointId: point._id,
-        trace: res.trace,
-        distanceKm: res.distanceKm,
-        denivelePositif: res.denivelePositif,
-        deniveleNegatif: res.deniveleNegatif,
+        trace: pointsTrace,
+        distanceKm: Math.round(distanceTrace([pointsTrace]) * 10) / 10,
+        denivelePositif: profil.gain,
+        deniveleNegatif: profil.loss,
       });
     } catch (err) {
       setErreurEcart(err instanceof Error ? err.message : "Erreur de calcul de l'écart.");
     } finally {
       setCalculEcartEnCours(false);
+      setClicEnAttente(null);
+      setTracePointsEcart([]);
     }
   };
+
+  const tracePreviewEcart: number[][] | undefined = (() => {
+    if (!clicEnAttente || clicEnAttente.type === "poi" || tracePointsEcart.length === 0) {
+      return undefined;
+    }
+    if (clicEnAttente.type === "ecart-etape") {
+      const etape = etapes.find((e) => e._id === clicEnAttente.etapeId);
+      if (!etape || etape.pointArriveeLat === undefined || etape.pointArriveeLng === undefined) {
+        return tracePointsEcart;
+      }
+      return [[etape.pointArriveeLat, etape.pointArriveeLng], ...tracePointsEcart];
+    }
+    const point = points.find((p) => p._id === clicEnAttente.pointId);
+    if (!point) return tracePointsEcart;
+    return [...tracePointsEcart, [point.lat, point.lng]];
+  })();
 
   const etapesSurCarte: TrekEtapeSurCarte[] = etapes.map((e) => ({
     id: e._id,
@@ -331,6 +361,7 @@ export default function CartePage() {
     setSelectedPointId(null);
     setPendingPoint(null);
     setClicEnAttente(null);
+    setTracePointsEcart([]);
   }
   function selectEtape(etapeId: string) {
     setSelectedStageRef(null);
@@ -455,6 +486,7 @@ export default function CartePage() {
       onSelectPoint={selectPoint}
       attenteClic={clicEnAttente !== null}
       onMapClick={handleMapClick}
+      tracePreview={tracePreviewEcart}
     />
   );
 
@@ -518,6 +550,7 @@ export default function CartePage() {
             calculEcartEnCours={calculEcartEnCours}
             onDemanderEcart={() => {
               setErreurEcart(null);
+              setTracePointsEcart([]);
               setClicEnAttente({ type: "ecart-etape", etapeId: e._id });
             }}
             onSupprimerEcart={() => removeEcartArrivee({ etapeId: e._id })}
@@ -626,6 +659,7 @@ export default function CartePage() {
           calculEcartEnCours={calculEcartEnCours}
           onDemanderEcart={() => {
             setErreurEcart(null);
+            setTracePointsEcart([]);
             setClicEnAttente({ type: "ecart-poi", pointId: selectedPoint._id });
           }}
           onSupprimerEcart={() => removeEcartPoi({ pointId: selectedPoint._id })}
@@ -683,16 +717,27 @@ export default function CartePage() {
 
       {clicEnAttente && (
         <div className="pointer-events-none absolute left-1/2 top-3 z-[1100] flex -translate-x-1/2 items-center gap-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
-          <span>
-            {clicEnAttente.type === "poi" && "Clique sur la carte pour placer le point"}
-            {clicEnAttente.type === "ecart-etape" &&
-              "Clique sur la carte pour indiquer le vrai point d'arrivée"}
-            {clicEnAttente.type === "ecart-poi" &&
-              "Clique sur la carte pour indiquer où tu quittes le tracé"}
-          </span>
+          {clicEnAttente.type === "poi" ? (
+            <span>Clique sur la carte pour placer le point</span>
+          ) : (
+            <span>
+              Clique les points du chemin en suivant le sentier ({tracePointsEcart.length} point
+              {tracePointsEcart.length > 1 ? "s" : ""})
+            </span>
+          )}
+          {clicEnAttente.type !== "poi" && (
+            <button
+              type="button"
+              onClick={finirEcart}
+              disabled={tracePointsEcart.length === 0 || calculEcartEnCours}
+              className="pointer-events-auto shrink-0 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-400 disabled:opacity-40"
+            >
+              {calculEcartEnCours ? "Calcul…" : "Terminer"}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setClicEnAttente(null)}
+            onClick={annulerEcart}
             className="pointer-events-auto shrink-0 text-slate-300 underline hover:text-white"
           >
             Annuler
@@ -1036,7 +1081,7 @@ function EtapeAccordionItem({
                   className="text-xs text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
                 >
                   {enAttenteEcart
-                    ? "Clique sur la carte…"
+                    ? "Trace le chemin sur la carte…"
                     : calculEcartEnCours
                       ? "Calcul en cours…"
                       : "+ Ajuster le point d'arrivée"}
@@ -1202,7 +1247,7 @@ function PointDetailPanel({
               className="text-xs text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
             >
               {enAttenteEcart
-                ? "Clique sur la carte…"
+                ? "Trace le chemin sur la carte…"
                 : calculEcartEnCours
                   ? "Calcul en cours…"
                   : "+ Calculer l'accès"}

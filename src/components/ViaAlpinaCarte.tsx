@@ -232,6 +232,7 @@ export default function ViaAlpinaCarte({
   onSelectPoint,
   attenteClic,
   onMapClick,
+  tracePreview,
 }: {
   catalog: ViaAlpinaStage[];
   etapes: TrekEtapeSurCarte[];
@@ -248,6 +249,9 @@ export default function ViaAlpinaCarte({
   // écart) — seul le curseur en dépend, la logique métier reste côté appelant.
   attenteClic: boolean;
   onMapClick: (lat: number, lng: number) => void;
+  // Écart en cours de tracé au clic (pas encore enregistré) : aperçu en
+  // pointillé bleu, avec un point à chaque clic.
+  tracePreview?: number[][];
 }) {
   const importedRefs = useMemo(
     () => new Set(etapes.map((e) => e.viaAlpinaRef).filter(Boolean) as string[]),
@@ -395,6 +399,26 @@ export default function ViaAlpinaCarte({
             pathOptions={{ color: "#d97706", weight: 4, opacity: 0.9, dashArray: "6 8" }}
           />
         ))}
+
+      {/* Écart en cours de tracé (pas encore enregistré) : un point par clic */}
+      {tracePreview && tracePreview.length > 0 && (
+        <>
+          {tracePreview.length > 1 && (
+            <Polyline
+              positions={tracePreview as LatLngExpression[]}
+              pathOptions={{ color: "#2563eb", weight: 4, opacity: 0.9, dashArray: "2 8" }}
+            />
+          )}
+          {tracePreview.map((p, i) => (
+            <CircleMarker
+              key={i}
+              center={p as LatLngExpression}
+              radius={5}
+              pathOptions={{ color: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 1, weight: 2 }}
+            />
+          ))}
+        </>
+      )}
 
       {/* Hébergements : infos consultables au survol, sans avoir à ouvrir l'étape */}
       {hebergements.map((h) => (
