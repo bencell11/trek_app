@@ -63,6 +63,9 @@ type EtapeAvecHebergement = {
   denivelePositif?: number;
   deniveleNegatif?: number;
   dureeEstimeeH?: number;
+  ecartArriveeDistanceKm?: number;
+  ecartArriveeDenivelePositif?: number;
+  ecartArriveeDeniveleNegatif?: number;
   hebergement: {
     nom: string;
     type: "refuge" | "bivouac" | "hotel" | "autre";
@@ -72,6 +75,13 @@ type EtapeAvecHebergement = {
     notes?: string;
   } | null;
 };
+
+// Un clic sur la carte peut être attendu pour trois raisons différentes ;
+// une fois reçu, on sait quoi en faire selon ce type.
+type ClicEnAttente =
+  | { type: "poi" }
+  | { type: "ecart-etape"; etapeId: Id<"etapes"> }
+  | { type: "ecart-poi"; pointId: Id<"pointsInteret"> };
 
 type MaterielItemAvecManque = {
   _id: Id<"materielItems">;
@@ -110,13 +120,20 @@ export default function CartePage() {
   const createParticipant = useMutation(api.participants.create);
   const addPresence = useMutation(api.presence.add);
   const removePresence = useMutation(api.presence.remove);
+  const calculerEcart = useAction(api.ecarts.calculer);
+  const setEcartArrivee = useMutation(api.etapes.setEcartArrivee);
+  const removeEcartArrivee = useMutation(api.etapes.removeEcartArrivee);
+  const setEcartPoi = useMutation(api.pointsInteret.setEcart);
+  const removeEcartPoi = useMutation(api.pointsInteret.removeEcart);
   const { nom: monNom } = useCurrentUser();
 
   const [selectedEtapeId, setSelectedEtapeId] = useState<string | null>(null);
   const [selectedStageRef, setSelectedStageRef] = useState<string | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [placingPoint, setPlacingPoint] = useState(false);
+  const [clicEnAttente, setClicEnAttente] = useState<ClicEnAttente | null>(null);
+  const [calculEcartEnCours, setCalculEcartEnCours] = useState(false);
+  const [erreurEcart, setErreurEcart] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
   const [pleinEcran, setPleinEcran] = useState(true);
   const [panneauReduit, setPanneauReduit] = useState(false);
@@ -157,6 +174,75 @@ export default function CartePage() {
     }
   }
 
+  const handleMapClick = async (lat: number, lng: number) => {
+    if (!clicEnAttente) return;
+    const demande = clicEnAttente;
+    setClicEnAttente(null);
+
+    if (demande.type === "poi") {
+      clearSelection();
+      setPendingPoint({ lat, lng });
+      return;
+    }
+
+    if (demande.type === "ecart-etape") {
+      const etape = etapes.find((e) => e._id === demande.etapeId);
+      if (!etape || etape.pointArriveeLat === undefined || etape.pointArriveeLng === undefined) {
+        setErreurEcart("Cette étape n'a pas de point d'arrivée connu (importe-la depuis le tracé officiel d'abord).");
+        return;
+      }
+      setErreurEcart(null);
+      setCalculEcartEnCours(true);
+      try {
+        const res = await calculerEcart({
+          departLat: etape.pointArriveeLat,
+          departLng: etape.pointArriveeLng,
+          arriveeLat: lat,
+          arriveeLng: lng,
+        });
+        await setEcartArrivee({
+          etapeId: etape._id,
+          trace: res.trace,
+          distanceKm: res.distanceKm,
+          denivelePositif: res.denivelePositif,
+          deniveleNegatif: res.deniveleNegatif,
+          lat,
+          lng,
+        });
+      } catch (err) {
+        setErreurEcart(err instanceof Error ? err.message : "Erreur de calcul de l'écart.");
+      } finally {
+        setCalculEcartEnCours(false);
+      }
+      return;
+    }
+
+    // ecart-poi
+    const point = points.find((p) => p._id === demande.pointId);
+    if (!point) return;
+    setErreurEcart(null);
+    setCalculEcartEnCours(true);
+    try {
+      const res = await calculerEcart({
+        departLat: lat,
+        departLng: lng,
+        arriveeLat: point.lat,
+        arriveeLng: point.lng,
+      });
+      await setEcartPoi({
+        pointId: point._id,
+        trace: res.trace,
+        distanceKm: res.distanceKm,
+        denivelePositif: res.denivelePositif,
+        deniveleNegatif: res.deniveleNegatif,
+      });
+    } catch (err) {
+      setErreurEcart(err instanceof Error ? err.message : "Erreur de calcul de l'écart.");
+    } finally {
+      setCalculEcartEnCours(false);
+    }
+  };
+
   const etapesSurCarte: TrekEtapeSurCarte[] = etapes.map((e) => ({
     id: e._id,
     ordre: e.ordre,
@@ -169,6 +255,7 @@ export default function CartePage() {
     viaAlpinaRef: e.viaAlpinaRef,
     hebergementNom: e.hebergement?.nom ?? null,
     participantsNoms: presenceByEtape.get(e._id) ?? [],
+    ecartArriveeTrace: e.ecartArriveeTrace,
   }));
 
   const hebergementsSurCarte: HebergementSurCarte[] = etapes
@@ -181,8 +268,8 @@ export default function CartePage() {
       contact: e.hebergement!.contact,
       prixChf: e.hebergement!.prixChf,
       notes: e.hebergement!.notes,
-      lat: e.pointArriveeLat as number,
-      lng: e.pointArriveeLng as number,
+      lat: e.ecartArriveeLat ?? (e.pointArriveeLat as number),
+      lng: e.ecartArriveeLng ?? (e.pointArriveeLng as number),
     }));
 
   const pointsSurCarte: PointInteretSurCarte[] = points.map((p) => ({
@@ -192,6 +279,7 @@ export default function CartePage() {
     lat: p.lat,
     lng: p.lng,
     notes: p.notes,
+    ecartTrace: p.ecartTrace,
   }));
 
   // Les abris (tente...) n'ont pas d'étape fixe : ils concernent chacun des
@@ -220,9 +308,18 @@ export default function CartePage() {
     materielParEtape.set(etape._id, list);
   }
 
-  const totalDistance = etapes.reduce((s, e) => s + (e.distanceKm ?? 0), 0);
-  const totalDPlus = etapes.reduce((s, e) => s + (e.denivelePositif ?? 0), 0);
-  const totalDMoins = etapes.reduce((s, e) => s + (e.deniveleNegatif ?? 0), 0);
+  const totalDistance = etapes.reduce(
+    (s, e) => s + (e.distanceKm ?? 0) + (e.ecartArriveeDistanceKm ?? 0),
+    0
+  );
+  const totalDPlus = etapes.reduce(
+    (s, e) => s + (e.denivelePositif ?? 0) + (e.ecartArriveeDenivelePositif ?? 0),
+    0
+  );
+  const totalDMoins = etapes.reduce(
+    (s, e) => s + (e.deniveleNegatif ?? 0) + (e.ecartArriveeDeniveleNegatif ?? 0),
+    0
+  );
 
   const importedRefs = new Set(etapesSurCarte.map((e) => e.viaAlpinaRef).filter(Boolean));
   const selectedStage = catalog.find((s) => s.ref === selectedStageRef);
@@ -233,6 +330,7 @@ export default function CartePage() {
     setSelectedStageRef(null);
     setSelectedPointId(null);
     setPendingPoint(null);
+    setClicEnAttente(null);
   }
   function selectEtape(etapeId: string) {
     setSelectedStageRef(null);
@@ -355,12 +453,8 @@ export default function CartePage() {
       onSelectStage={selectStage}
       selectedPointId={selectedPointId}
       onSelectPoint={selectPoint}
-      placingPoint={placingPoint}
-      onMapClickForPoint={(lat, lng) => {
-        clearSelection();
-        setPendingPoint({ lat, lng });
-        setPlacingPoint(false);
-      }}
+      attenteClic={clicEnAttente !== null}
+      onMapClick={handleMapClick}
     />
   );
 
@@ -409,6 +503,24 @@ export default function CartePage() {
               clearSelection();
             }}
             onSaveHebergement={(data) => upsertHebergement({ etapeId: e._id, ...data })}
+            ecartArrivee={
+              e.ecartArriveeDistanceKm !== undefined
+                ? {
+                    distanceKm: e.ecartArriveeDistanceKm,
+                    denivelePositif: e.ecartArriveeDenivelePositif ?? 0,
+                    deniveleNegatif: e.ecartArriveeDeniveleNegatif ?? 0,
+                  }
+                : null
+            }
+            enAttenteEcart={
+              clicEnAttente?.type === "ecart-etape" && clicEnAttente.etapeId === e._id
+            }
+            calculEcartEnCours={calculEcartEnCours}
+            onDemanderEcart={() => {
+              setErreurEcart(null);
+              setClicEnAttente({ type: "ecart-etape", etapeId: e._id });
+            }}
+            onSupprimerEcart={() => removeEcartArrivee({ etapeId: e._id })}
           />
         ))}
         {etapes.length === 0 && (
@@ -462,12 +574,12 @@ export default function CartePage() {
         type="button"
         onClick={() => {
           clearSelection();
-          setPlacingPoint(true);
+          setClicEnAttente({ type: "poi" });
         }}
-        disabled={placingPoint}
+        disabled={clicEnAttente !== null}
         className="mt-3 block text-left text-sm text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
       >
-        {placingPoint ? "Clique sur la carte…" : "+ Point d'intérêt (vue, lac...)"}
+        {clicEnAttente?.type === "poi" ? "Clique sur la carte…" : "+ Point d'intérêt (vue, lac...)"}
       </button>
     </>
   );
@@ -499,6 +611,24 @@ export default function CartePage() {
             await deletePoint({ pointId: selectedPoint._id });
             clearSelection();
           }}
+          ecart={
+            selectedPoint.ecartDistanceKm !== undefined
+              ? {
+                  distanceKm: selectedPoint.ecartDistanceKm,
+                  denivelePositif: selectedPoint.ecartDenivelePositif ?? 0,
+                  deniveleNegatif: selectedPoint.ecartDeniveleNegatif ?? 0,
+                }
+              : null
+          }
+          enAttenteEcart={
+            clicEnAttente?.type === "ecart-poi" && clicEnAttente.pointId === selectedPoint._id
+          }
+          calculEcartEnCours={calculEcartEnCours}
+          onDemanderEcart={() => {
+            setErreurEcart(null);
+            setClicEnAttente({ type: "ecart-poi", pointId: selectedPoint._id });
+          }}
+          onSupprimerEcart={() => removeEcartPoi({ pointId: selectedPoint._id })}
         />
       )}
 
@@ -551,9 +681,34 @@ export default function CartePage() {
     <div className="relative h-full w-full">
       {carte}
 
-      {placingPoint && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-[1100] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
-          Clique sur la carte pour placer le point
+      {clicEnAttente && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-[1100] flex -translate-x-1/2 items-center gap-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg">
+          <span>
+            {clicEnAttente.type === "poi" && "Clique sur la carte pour placer le point"}
+            {clicEnAttente.type === "ecart-etape" &&
+              "Clique sur la carte pour indiquer le vrai point d'arrivée"}
+            {clicEnAttente.type === "ecart-poi" &&
+              "Clique sur la carte pour indiquer où tu quittes le tracé"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setClicEnAttente(null)}
+            className="pointer-events-auto shrink-0 text-slate-300 underline hover:text-white"
+          >
+            Annuler
+          </button>
+        </div>
+      )}
+      {erreurEcart && (
+        <div className="pointer-events-none absolute left-1/2 top-14 z-[1100] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
+          <span>{erreurEcart}</span>
+          <button
+            type="button"
+            onClick={() => setErreurEcart(null)}
+            className="pointer-events-auto ml-3 underline"
+          >
+            OK
+          </button>
         </div>
       )}
 
@@ -624,6 +779,11 @@ function EtapeAccordionItem({
   onTogglePresence,
   onDelete,
   onSaveHebergement,
+  ecartArrivee,
+  enAttenteEcart,
+  calculEcartEnCours,
+  onDemanderEcart,
+  onSupprimerEcart,
 }: {
   etape: EtapeAvecHebergement;
   expanded: boolean;
@@ -642,6 +802,11 @@ function EtapeAccordionItem({
     prixChf?: number;
     notes?: string;
   }) => void;
+  ecartArrivee: { distanceKm: number; denivelePositif: number; deniveleNegatif: number } | null;
+  enAttenteEcart: boolean;
+  calculEcartEnCours: boolean;
+  onDemanderEcart: () => void;
+  onSupprimerEcart: () => void;
 }) {
   const heb = etape.hebergement;
   const nbManques = materielEtape.filter((i) => i.manque > 0).length;
@@ -859,6 +1024,47 @@ function EtapeAccordionItem({
           </details>
 
           <div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Écart au tracé
+              </p>
+              {!ecartArrivee && (
+                <button
+                  type="button"
+                  onClick={onDemanderEcart}
+                  disabled={enAttenteEcart || calculEcartEnCours}
+                  className="text-xs text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
+                >
+                  {enAttenteEcart
+                    ? "Clique sur la carte…"
+                    : calculEcartEnCours
+                      ? "Calcul en cours…"
+                      : "+ Ajuster le point d'arrivée"}
+                </button>
+              )}
+            </div>
+            {ecartArrivee ? (
+              <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                <span>
+                  +{ecartArrivee.distanceKm}km / +{ecartArrivee.denivelePositif}m / -
+                  {ecartArrivee.deniveleNegatif}m jusqu&apos;au point réel
+                </span>
+                <button
+                  type="button"
+                  onClick={onSupprimerEcart}
+                  className="shrink-0 text-slate-400 hover:text-red-600"
+                >
+                  retirer
+                </button>
+              </div>
+            ) : (
+              <p className="mt-1 text-slate-400">
+                Le point d&apos;arrivée officiel est utilisé.
+              </p>
+            )}
+          </div>
+
+          <div>
             <CommentsThread etapeId={etape._id} />
           </div>
 
@@ -961,9 +1167,19 @@ function StageDetailPanel({
 function PointDetailPanel({
   point,
   onDelete,
+  ecart,
+  enAttenteEcart,
+  calculEcartEnCours,
+  onDemanderEcart,
+  onSupprimerEcart,
 }: {
   point: { nom: string; type: PointInteretType; notes?: string };
   onDelete: () => void;
+  ecart: { distanceKm: number; denivelePositif: number; deniveleNegatif: number } | null;
+  enAttenteEcart: boolean;
+  calculEcartEnCours: boolean;
+  onDemanderEcart: () => void;
+  onSupprimerEcart: () => void;
 }) {
   return (
     <div>
@@ -972,6 +1188,48 @@ function PointDetailPanel({
       </p>
       <p className="text-sm text-slate-500">{LABEL_POI[point.type]}</p>
       {point.notes && <p className="mt-2 text-sm text-slate-600">{point.notes}</p>}
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Accès depuis le tracé
+          </p>
+          {!ecart && (
+            <button
+              type="button"
+              onClick={onDemanderEcart}
+              disabled={enAttenteEcart || calculEcartEnCours}
+              className="text-xs text-slate-500 underline hover:text-slate-800 disabled:text-slate-300"
+            >
+              {enAttenteEcart
+                ? "Clique sur la carte…"
+                : calculEcartEnCours
+                  ? "Calcul en cours…"
+                  : "+ Calculer l'accès"}
+            </button>
+          )}
+        </div>
+        {ecart ? (
+          <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+            <span>
+              {ecart.distanceKm}km / +{ecart.denivelePositif}m / -{ecart.deniveleNegatif}m
+              aller simple
+            </span>
+            <button
+              type="button"
+              onClick={onSupprimerEcart}
+              className="shrink-0 text-slate-400 hover:text-red-600"
+            >
+              retirer
+            </button>
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-slate-400">
+            Indique où tu quittes le tracé pour connaître la distance/le dénivelé réels.
+          </p>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={onDelete}

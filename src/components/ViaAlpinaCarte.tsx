@@ -33,6 +33,9 @@ export type TrekEtapeSurCarte = {
   viaAlpinaRef?: string;
   hebergementNom?: string | null;
   participantsNoms: string[];
+  // Écart routé (ORS) entre l'arrivée officielle et le vrai point d'arrivée
+  // (bivouac hors tracé...), s'il a été renseigné.
+  ecartArriveeTrace?: number[][];
 };
 
 export type HebergementSurCarte = {
@@ -56,6 +59,9 @@ export type PointInteretSurCarte = {
   lat: number;
   lng: number;
   notes?: string;
+  // Écart routé (ORS) entre le point du tracé où on le quitte et ce point
+  // d'intérêt, s'il a été renseigné.
+  ecartTrace?: number[][];
 };
 
 const EMOJI_POI: Record<PointInteretType, string> = {
@@ -224,8 +230,8 @@ export default function ViaAlpinaCarte({
   onSelectStage,
   selectedPointId,
   onSelectPoint,
-  placingPoint,
-  onMapClickForPoint,
+  attenteClic,
+  onMapClick,
 }: {
   catalog: ViaAlpinaStage[];
   etapes: TrekEtapeSurCarte[];
@@ -237,8 +243,11 @@ export default function ViaAlpinaCarte({
   onSelectStage: (ref: string) => void;
   selectedPointId: string | null;
   onSelectPoint: (id: string) => void;
-  placingPoint: boolean;
-  onMapClickForPoint: (lat: number, lng: number) => void;
+  // true dès qu'un clic sur la carte est attendu, quelle que soit la raison
+  // (nouveau point d'intérêt, point d'arrivée réel d'une étape, départ d'un
+  // écart) — seul le curseur en dépend, la logique métier reste côté appelant.
+  attenteClic: boolean;
+  onMapClick: (lat: number, lng: number) => void;
 }) {
   const importedRefs = useMemo(
     () => new Set(etapes.map((e) => e.viaAlpinaRef).filter(Boolean) as string[]),
@@ -271,7 +280,7 @@ export default function ViaAlpinaCarte({
       zoom={8}
       scrollWheelZoom
       zoomControl={false}
-      className={`h-full w-full ${placingPoint ? "cursor-crosshair" : ""}`}
+      className={`h-full w-full ${attenteClic ? "cursor-crosshair" : ""}`}
     >
       <ZoomControl position="bottomleft" />
       <SelecteurFondDeCarte fond={fond} onChange={setFond} />
@@ -365,6 +374,28 @@ export default function ViaAlpinaCarte({
         );
       })}
 
+      {/* Écarts au tracé officiel (bivouac hors sentier, aller-retour vers un
+          point d'intérêt...) : en pointillé pour bien les distinguer du
+          tracé principal, qui reste fiable/officiel. */}
+      {etapes
+        .filter((e) => e.ecartArriveeTrace && e.ecartArriveeTrace.length > 1)
+        .map((e) => (
+          <Polyline
+            key={`ecart-${e.id}`}
+            positions={e.ecartArriveeTrace as LatLngExpression[]}
+            pathOptions={{ color: "#d97706", weight: 4, opacity: 0.9, dashArray: "6 8" }}
+          />
+        ))}
+      {pointsInteret
+        .filter((p) => p.ecartTrace && p.ecartTrace.length > 1)
+        .map((p) => (
+          <Polyline
+            key={`ecart-${p.id}`}
+            positions={p.ecartTrace as LatLngExpression[]}
+            pathOptions={{ color: "#d97706", weight: 4, opacity: 0.9, dashArray: "6 8" }}
+          />
+        ))}
+
       {/* Hébergements : infos consultables au survol, sans avoir à ouvrir l'étape */}
       {hebergements.map((h) => (
         <Marker
@@ -411,7 +442,7 @@ export default function ViaAlpinaCarte({
         </Marker>
       ))}
 
-      <ClicPourPlacer actif={placingPoint} onClick={onMapClickForPoint} />
+      <ClicPourPlacer actif={attenteClic} onClick={onMapClick} />
       <FitBounds bounds={bounds} />
     </MapContainer>
   );

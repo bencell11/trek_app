@@ -30,6 +30,15 @@ export default defineSchema({
     pointArriveeLng: v.optional(v.number()),
     trace: v.optional(v.array(v.array(v.array(v.number())))),
     viaAlpinaRef: v.optional(v.string()),
+    // Écart : quand le point d'arrivée réel (bivouac hors tracé...) s'éloigne
+    // du tracé officiel — le chemin calculé (routage ORS) entre l'arrivée
+    // officielle et ce point réel, avec sa propre distance/dénivelé.
+    ecartArriveeTrace: v.optional(v.array(v.array(v.number()))),
+    ecartArriveeDistanceKm: v.optional(v.number()),
+    ecartArriveeDenivelePositif: v.optional(v.number()),
+    ecartArriveeDeniveleNegatif: v.optional(v.number()),
+    ecartArriveeLat: v.optional(v.number()),
+    ecartArriveeLng: v.optional(v.number()),
   }).index("by_trek", ["trekId"]),
 
   hebergements: defineTable({
@@ -107,5 +116,11 @@ export default defineSchema({
     lat: v.number(),
     lng: v.number(),
     notes: v.optional(v.string()),
+    // Écart aller-retour : chemin calculé (routage ORS) depuis le point du
+    // tracé où on quitte le sentier jusqu'à ce point d'intérêt.
+    ecartTrace: v.optional(v.array(v.array(v.number()))),
+    ecartDistanceKm: v.optional(v.number()),
+    ecartDenivelePositif: v.optional(v.number()),
+    ecartDeniveleNegatif: v.optional(v.number()),
   }).index("by_trek", ["trekId"]),
 });

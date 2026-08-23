@@ -37,3 +37,33 @@ export const remove = mutation({
     await ctx.db.delete(pointId);
   },
 });
+
+export const setEcart = mutation({
+  args: {
+    pointId: v.id("pointsInteret"),
+    trace: v.array(v.array(v.number())),
+    distanceKm: v.number(),
+    denivelePositif: v.number(),
+    deniveleNegatif: v.number(),
+  },
+  handler: async (ctx, { pointId, trace, distanceKm, denivelePositif, deniveleNegatif }) => {
+    await ctx.db.patch(pointId, {
+      ecartTrace: trace,
+      ecartDistanceKm: distanceKm,
+      ecartDenivelePositif: denivelePositif,
+      ecartDeniveleNegatif: deniveleNegatif,
+    });
+  },
+});
+
+export const removeEcart = mutation({
+  args: { pointId: v.id("pointsInteret") },
+  handler: async (ctx, { pointId }) => {
+    await ctx.db.patch(pointId, {
+      ecartTrace: undefined,
+      ecartDistanceKm: undefined,
+      ecartDenivelePositif: undefined,
+      ecartDeniveleNegatif: undefined,
+    });
+  },
+});

@@ -50,6 +50,42 @@ export const create = mutation({
   },
 });
 
+export const setEcartArrivee = mutation({
+  args: {
+    etapeId: v.id("etapes"),
+    trace: v.array(v.array(v.number())),
+    distanceKm: v.number(),
+    denivelePositif: v.number(),
+    deniveleNegatif: v.number(),
+    lat: v.number(),
+    lng: v.number(),
+  },
+  handler: async (ctx, { etapeId, trace, distanceKm, denivelePositif, deniveleNegatif, lat, lng }) => {
+    await ctx.db.patch(etapeId, {
+      ecartArriveeTrace: trace,
+      ecartArriveeDistanceKm: distanceKm,
+      ecartArriveeDenivelePositif: denivelePositif,
+      ecartArriveeDeniveleNegatif: deniveleNegatif,
+      ecartArriveeLat: lat,
+      ecartArriveeLng: lng,
+    });
+  },
+});
+
+export const removeEcartArrivee = mutation({
+  args: { etapeId: v.id("etapes") },
+  handler: async (ctx, { etapeId }) => {
+    await ctx.db.patch(etapeId, {
+      ecartArriveeTrace: undefined,
+      ecartArriveeDistanceKm: undefined,
+      ecartArriveeDenivelePositif: undefined,
+      ecartArriveeDeniveleNegatif: undefined,
+      ecartArriveeLat: undefined,
+      ecartArriveeLng: undefined,
+    });
+  },
+});
+
 export const remove = mutation({
   args: { etapeId: v.id("etapes") },
   handler: async (ctx, { etapeId }) => {
